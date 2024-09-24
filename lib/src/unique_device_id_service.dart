@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:device_info_plus/device_info_plus.dart';
@@ -14,6 +16,18 @@ class TraceInfo {
   String toString() {
     return 'IP: $ip, Location: $loc';
   }
+}
+
+Future<String?> getUniqueId() async {
+  final DeviceInfoPlugin deviceInfo = DeviceInfoPlugin();
+  if (Platform.isAndroid) {
+    AndroidDeviceInfo androidInfo = await deviceInfo.androidInfo;
+    return androidInfo.id; // This is the Android device ID.
+  } else if (Platform.isIOS) {
+    IosDeviceInfo iosInfo = await deviceInfo.iosInfo;
+    return iosInfo.identifierForVendor; // This is the iOS device identifier.
+  }
+  return null;
 }
 
 Future<TraceInfo> fetchTraceData() async {
@@ -51,11 +65,13 @@ class UniqueDeviceIdService {
 
     // Fetch location info from Cloudflare's trace service
     TraceInfo traceInfo = await fetchTraceData();
+    String? deviceID = await getUniqueId();
 
     switch (defaultTargetPlatform) {
       case TargetPlatform.android:
         AndroidDeviceInfo androidInfo = await deviceInfo.androidInfo;
         return UserInfo(
+          deviceID: deviceID.toString(),
           deviceType: androidInfo.device,
           width: width.toString(),
           height: height.toString(),
@@ -65,6 +81,7 @@ class UniqueDeviceIdService {
       case TargetPlatform.iOS:
         IosDeviceInfo iosInfo = await deviceInfo.iosInfo;
         return UserInfo(
+          deviceID: deviceID.toString(),
           deviceType: iosInfo.utsname.machine,
           width: width.toString(),
           height: height.toString(),

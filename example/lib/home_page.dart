@@ -33,16 +33,19 @@ class _MyHomePageState extends State<MyHomePage> {
       setState(() async {
         // Update the device info string with all necessary data
         _deviceInfo = '''
+          Unique ID: ${userInfo.deviceID}
           Device Type: ${userInfo.deviceType}
           Width: ${userInfo.width}
           Height: ${userInfo.height}
           Country Code: ${userInfo.countryCode}
+
         ''';
         //
         //
-        String Id = userInfo.deviceType;
+        String Id = userInfo.deviceID;
         Map<String, dynamic> DeviceInfoMap = {
           //"Id": Id,
+          "Unique ID": {userInfo.deviceID},
           "Device Type": {userInfo.deviceType},
           "Width": {userInfo.width},
           "Height": {userInfo.height},
