@@ -1,4 +1,5 @@
 import 'package:example/firebase_database.dart';
+import 'package:example/pages/screen1.dart';
 import 'package:flutter/material.dart';
 import 'package:qube_analytics_sdk/qube_analytics_sdk.dart';
 
@@ -76,6 +77,19 @@ class _MyHomePageState extends State<MyHomePage> {
               style: Theme.of(context).textTheme.bodyLarge,
               textAlign: TextAlign.center,
             ),
+            const SizedBox(height: 20),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const Screen1(),
+                    settings: const RouteSettings(name: 'Screen1'),
+                  ),
+                );
+              },
+              child: const Text('Go to Screen1'),
+            )
           ],
         ),
       ),

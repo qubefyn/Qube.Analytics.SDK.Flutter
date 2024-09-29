@@ -31,7 +31,7 @@ dependencies:
   flutter:
     sdk: flutter
   qube_analytics_sdk:
-    path: D:\Dev\qube_analytics_sdk
+    path: /Users/book/Documents/Qube.Analytics.SDK
   cupertino_icons: ^1.0.8
 
 dev_dependencies:
