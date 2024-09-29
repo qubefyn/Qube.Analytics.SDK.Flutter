@@ -14,7 +14,9 @@ class MyHomePage extends StatefulWidget {
 
 class _MyHomePageState extends State<MyHomePage> {
   String _deviceInfo = "Loading...";
+  String? _deviceID; // To store the deviceID
   final UniqueDeviceIdService _deviceIdService = UniqueDeviceIdService();
+  final TagService _tagService = TagService();
 
   @override
   void initState() {
@@ -40,8 +42,14 @@ class _MyHomePageState extends State<MyHomePage> {
       Country Code: ${userInfo.countryCode}
     ''';
 
-      // Create the device info map
+      // Store the deviceID for future use
       String id = userInfo.deviceID;
+      setState(() {
+        _deviceID = id; // Update the deviceID state variable
+        _deviceInfo = deviceInfo; // Update device info string
+      });
+
+      // Create the device info map
       Map<String, dynamic> deviceInfoMap = {
         "Unique ID": userInfo.deviceID,
         "Device Type": userInfo.deviceType,
@@ -52,11 +60,6 @@ class _MyHomePageState extends State<MyHomePage> {
 
       // Now call the database method
       await DatabaseMethods().DeviceInfo(deviceInfoMap, id);
-
-      // Finally, update the state synchronously
-      setState(() {
-        _deviceInfo = deviceInfo; // Update device info string
-      });
     } else {
       setState(() {
         _deviceInfo = "Could not retrieve device information";
@@ -92,7 +95,18 @@ class _MyHomePageState extends State<MyHomePage> {
                 );
               },
               child: const Text('Go to Screen1'),
-            )
+            ),
+            ElevatedButton(
+              onPressed: () {
+                // Send the actual deviceID
+                if (_deviceID != null) {
+                  _tagService.sendTag(_deviceID!);
+                } else {
+                  print('DeviceID not available yet');
+                }
+              },
+              child: const Text('Send Tag'),
+            ),
           ],
         ),
       ),
