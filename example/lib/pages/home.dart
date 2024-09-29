@@ -31,28 +31,31 @@ class _MyHomePageState extends State<MyHomePage> {
     final userInfo = await _deviceIdService.getUserInfo(context);
 
     if (userInfo != null) {
-      setState(() async {
-        // Update the device info string with all necessary data
-        _deviceInfo = '''
-          Unique ID: ${userInfo.deviceID}
-          Device Type: ${userInfo.deviceType}
-          Width: ${userInfo.width}
-          Height: ${userInfo.height}
-          Country Code: ${userInfo.countryCode}
+      // Prepare the device info string first
+      String deviceInfo = '''
+      Unique ID: ${userInfo.deviceID}
+      Device Type: ${userInfo.deviceType}
+      Width: ${userInfo.width}
+      Height: ${userInfo.height}
+      Country Code: ${userInfo.countryCode}
+    ''';
 
-        ''';
-        //
-        //
-        String Id = userInfo.deviceID;
-        Map<String, dynamic> DeviceInfoMap = {
-          //"Id": Id,
-          "Unique ID": {userInfo.deviceID},
-          "Device Type": {userInfo.deviceType},
-          "Width": {userInfo.width},
-          "Height": {userInfo.height},
-          "Country Code": {userInfo.countryCode},
-        };
-        await DatabaseMethods().DeviceInfo(DeviceInfoMap, Id);
+      // Create the device info map
+      String id = userInfo.deviceID;
+      Map<String, dynamic> deviceInfoMap = {
+        "Unique ID": userInfo.deviceID,
+        "Device Type": userInfo.deviceType,
+        "Width": userInfo.width,
+        "Height": userInfo.height,
+        "Country Code": userInfo.countryCode,
+      };
+
+      // Now call the database method
+      await DatabaseMethods().DeviceInfo(deviceInfoMap, id);
+
+      // Finally, update the state synchronously
+      setState(() {
+        _deviceInfo = deviceInfo; // Update device info string
       });
     } else {
       setState(() {
