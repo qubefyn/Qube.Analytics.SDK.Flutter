@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/material.dart';
 
@@ -82,11 +83,11 @@ class ScreenNavigationObserver extends NavigatorObserver {
     String? deviceID =
         await getUniqueId(); // Fetch the device ID asynchronously
     if (deviceID != null) {
-      _logNavigation(pageTitle, pagePath, inTime, outTime, deviceID);
+      logNavigation(pageTitle, pagePath, inTime, outTime, deviceID);
     }
   }
 
-  void _logNavigation(String pageTitle, String pagePath, DateTime inTime,
+  void logNavigation(String pageTitle, String pagePath, DateTime inTime,
       DateTime outTime, String deviceID) {
     final timestamp = DateTime.now();
     final log = NavigationLog(
@@ -99,6 +100,25 @@ class ScreenNavigationObserver extends NavigatorObserver {
 
     navigationLogs.add(log);
     print(log); // For debugging purposes
+
+    // Upload log to Firestore
+    _uploadLogToFirestore(log);
+  }
+}
+
+Future<void> _uploadLogToFirestore(NavigationLog log) async {
+  try {
+    await FirebaseFirestore.instance.collection('Navigation logs').add({
+      'pageTitle': log.pageTitle,
+      'pagePath': log.pagePath,
+      'inTime': log.inTime.toString(),
+      'outTime': log.outTime.toString(),
+      'deviceID': log.deviceID,
+      'timestamp': DateTime.now().toString(),
+    });
+    print("Log uploaded to Firebase");
+  } catch (e) {
+    print("Error uploading log to Firebase: $e");
   }
 }
 
@@ -122,6 +142,7 @@ class NavigationLog {
     return 'Page Title: $pageTitle, Page Path: $pagePath, In Time: $inTime, Out Time: $outTime, Device ID: $deviceID';
   }
 }
+
 
 
 // import 'dart:io';

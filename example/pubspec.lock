@@ -259,7 +259,7 @@ packages:
   qube_analytics_sdk:
     dependency: "direct main"
     description:
-      path: "/Users/book/Documents/Qube.Analytics.SDK"
+      path: "D:\\Dev\\qube_analytics_sdk"
       relative: false
     source: path
     version: "0.0.1"

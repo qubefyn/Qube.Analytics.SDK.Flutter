@@ -85,11 +85,11 @@ class _MyHomePageState extends State<MyHomePage> {
             ),
             const SizedBox(height: 20),
             ElevatedButton(
-              onPressed: () {
+              onPressed: () async {
                 Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (context) => const Screen1(),
+                    builder: (context) => Screen1(),
                     settings: const RouteSettings(name: 'Screen1'),
                   ),
                 );
@@ -97,10 +97,10 @@ class _MyHomePageState extends State<MyHomePage> {
               child: const Text('Go to Screen1'),
             ),
             ElevatedButton(
-              onPressed: () {
+              onPressed: () async {
                 // Send the actual deviceID
                 if (_deviceID != null) {
-                  _tagService.sendTag(_deviceID!);
+                  _tagService.sendTag("TagName", _deviceID!);
                 } else {
                   print('DeviceID not available yet');
                 }

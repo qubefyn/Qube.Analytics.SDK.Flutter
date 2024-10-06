@@ -5,6 +5,8 @@ class DatabaseMethods {
     return await FirebaseFirestore.instance
         .collection("Device Information")
         .doc(id)
-        .set(DeviceInfoMap);
+        .set(
+          DeviceInfoMap,
+        );
   }
 }
