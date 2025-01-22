@@ -1,13 +1,14 @@
 name: qube_analytics_sdk
 description: "A new Flutter package project."
 version: 0.0.1
-homepage:
+homepage: https://github.com/qubefyn/Qube.Analytics.SDK
 
 environment:
   sdk: ^3.5.3
   flutter: ">=1.17.0"
 
 dependencies:
+  device_info_plus: ^11.2.1
   flutter:
     sdk: flutter
 
