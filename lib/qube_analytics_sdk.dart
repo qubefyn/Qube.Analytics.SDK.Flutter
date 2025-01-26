@@ -230,11 +230,13 @@ class QubeAnalyticsSDK {
   }
 }
 
+abstract class TrackableScreen {
+  String get screenName {
+    return runtimeType.toString();
+  }
+}
+
 class QubeNavigatorObserver extends NavigatorObserver {
-  final String Function(Route<dynamic> route)? screenNameResolver;
-
-  QubeNavigatorObserver({this.screenNameResolver});
-
   @override
   void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) {
     super.didPush(route, previousRoute);
@@ -252,17 +254,21 @@ class QubeNavigatorObserver extends NavigatorObserver {
   }
 
   String _resolveScreenName(Route<dynamic> route) {
-    // First, check if a custom screen name resolver is provided
-    if (screenNameResolver != null) {
-      return screenNameResolver!(route);
-    }
-
-    // Check route settings name
+    // Check route settings name first
     if (route.settings.name != null) {
       return route.settings.name!;
     }
 
-    // Fallback to route's runtime type
+    // Try to get screen name from widget
+    try {
+      if (route.navigator?.context.widget is TrackableScreen) {
+        return (route.navigator!.context.widget as TrackableScreen).screenName;
+      }
+    } catch (e) {
+      // Ignore errors
+    }
+
+    // Fallback to route type
     return route.runtimeType.toString();
   }
 }
