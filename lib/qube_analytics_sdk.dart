@@ -65,34 +65,6 @@ class ScreenViewData {
       };
 }
 
-// Error Data Model
-class ErrorData {
-  final String sessionId;
-  final String userId;
-  final String? screenId;
-  final String errorMessage;
-  final String errorStackTrace;
-  final bool isCustom;
-
-  ErrorData({
-    required this.sessionId,
-    required this.userId,
-    this.screenId,
-    required this.errorMessage,
-    required this.errorStackTrace,
-    required this.isCustom,
-  });
-
-  Map<String, dynamic> toJson() => {
-        'sessionId': sessionId,
-        'userId': userId,
-        'screenId': screenId,
-        'errorMessage': errorMessage,
-        'errorStackTrace': errorStackTrace,
-        'isCustom': isCustom,
-      };
-}
-
 // Qube Analytics SDK
 class QubeAnalyticsSDK {
   static final QubeAnalyticsSDK _instance = QubeAnalyticsSDK._internal();
@@ -115,13 +87,10 @@ class QubeAnalyticsSDK {
 
     // Set error tracking
     FlutterError.onError = (FlutterErrorDetails details) {
-      trackError(ErrorData(
-        sessionId: sessionId,
-        userId: userData.userId,
+      trackScreenError(
         errorMessage: details.exceptionAsString(),
-        errorStackTrace: details.stack.toString(),
-        isCustom: false,
-      ));
+        stackTrace: details.stack.toString(),
+      );
     };
   }
 
@@ -157,42 +126,9 @@ class QubeAnalyticsSDK {
     return deviceIdentifier.hashCode.toString();
   }
 
-  Future<String> _getIPAddress() async {
-    try {
-      const url = "https://api64.ipify.org?format=json";
-      final response = await http.get(Uri.parse(url));
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        return data['ip'];
-      }
-    } catch (e) {
-      print("Error fetching Public IP: $e");
-    }
-    return "Unknown";
-  }
-
-  Future<String> _getCountry(String ipAddress) async {
-    try {
-      const apiKey = "df508899a9aa3c8b27e8cbedcb2dffb4";
-      final url =
-          "http://api.ipapi.com/$ipAddress?access_key=$apiKey&fields=country_name&output=json";
-      final response = await http.get(Uri.parse(url));
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        return data['country_name'] ?? "Unknown";
-      } else {
-        print("Failed to fetch country: ${response.body}");
-      }
-    } catch (e) {
-      print("Error fetching country: $e");
-    }
-    return "Unknown";
-  }
-
   Future<UserData> _collectDeviceData(String userId) async {
     final deviceInfo = DeviceInfoPlugin();
-    String deviceType = "";
+    String deviceType = "Unknown";
     int ram = 0;
     int cpuCores = 0;
     final ipAddress = await _getIPAddress();
@@ -206,8 +142,8 @@ class QubeAnalyticsSDK {
     } else if (Platform.isIOS) {
       final iosInfo = await deviceInfo.iosInfo;
       deviceType = "iOS";
-      ram = 2;
-      cpuCores = 4;
+      ram = 2; // Estimated value
+      cpuCores = 4; // Estimated value
     }
 
     return UserData(
@@ -221,35 +157,54 @@ class QubeAnalyticsSDK {
     );
   }
 
-  void trackScreenView(ScreenViewData data) {
-    print("Screen View Details: ${jsonEncode(data.toJson())}");
+  Future<String> _getIPAddress() async {
+    try {
+      const url = "https://api64.ipify.org?format=json";
+      final response = await http.get(Uri.parse(url));
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return data['ip'];
+      }
+    } catch (e) {
+      print("Error fetching IP: $e");
+    }
+    return "Unknown";
   }
 
-  void trackError(ErrorData data) {
-    print("Error: ${jsonEncode(data.toJson())}");
-  }
-}
-
-// ScreenTracker Widget
-class ScreenTracker extends InheritedWidget {
-  final String screenName;
-  final String screenPath;
-
-  const ScreenTracker({
-    super.key,
-    required this.screenName,
-    required this.screenPath,
-    required super.child,
-  });
-
-  static ScreenTracker? of(BuildContext context) {
-    return context.dependOnInheritedWidgetOfExactType<ScreenTracker>();
+  Future<String> _getCountry(String ipAddress) async {
+    try {
+      const apiKey = "df508899a9aa3c8b27e8cbedcb2dffb4";
+      final url =
+          "http://api.ipapi.com/$ipAddress?access_key=$apiKey&fields=country_name";
+      final response = await http.get(Uri.parse(url));
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return data['country_name'] ?? "Unknown";
+      }
+    } catch (e) {
+      print("Error fetching country: $e");
+    }
+    return "Unknown";
   }
 
-  @override
-  bool updateShouldNotify(ScreenTracker oldWidget) {
-    return screenName != oldWidget.screenName ||
-        screenPath != oldWidget.screenPath;
+  void trackScreenView(
+      {required String screenName, required String screenPath}) {
+    final screenId = screenPath.hashCode.toString();
+    final data = ScreenViewData(
+      screenId: screenId,
+      screenPath: screenPath,
+      screenName: screenName,
+      visitDateTime: DateTime.now(),
+      sessionId: sessionId,
+    );
+    print("Screen View: ${jsonEncode(data.toJson())}");
+  }
+
+  void trackScreenError({
+    required String errorMessage,
+    required String stackTrace,
+  }) {
+    print("Error: $errorMessage, StackTrace: $stackTrace");
   }
 }
 
@@ -259,39 +214,12 @@ class QubeNavigatorObserver extends NavigatorObserver {
   void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) {
     super.didPush(route, previousRoute);
 
-    final sdk = QubeAnalyticsSDK();
+    final screenName = route.settings.name ?? route.runtimeType.toString();
+    final screenPath = route.runtimeType.toString();
 
-    if (route is ModalRoute) {
-      final BuildContext? context = route.subtreeContext;
-      if (context != null) {
-        final tracker = ScreenTracker.of(context);
-
-        if (tracker != null) {
-          final screenId = tracker.screenPath.hashCode.toString();
-          print(
-              "ScreenTracker Data: screenName=${tracker.screenName}, screenPath=${tracker.screenPath}, screenId=$screenId");
-
-          sdk.trackScreenView(ScreenViewData(
-            screenId: screenId,
-            screenPath: tracker.screenPath,
-            screenName: tracker.screenName,
-            visitDateTime: DateTime.now(),
-            sessionId: sdk.sessionId,
-          ));
-        } else {
-          final defaultScreenName = route.settings.name ?? "Unknown Screen";
-          final defaultScreenPath = route.runtimeType.toString();
-          final screenId = defaultScreenPath.hashCode.toString();
-
-          sdk.trackScreenView(ScreenViewData(
-            screenId: screenId,
-            screenPath: defaultScreenPath,
-            screenName: defaultScreenName,
-            visitDateTime: DateTime.now(),
-            sessionId: sdk.sessionId,
-          ));
-        }
-      }
-    }
+    QubeAnalyticsSDK().trackScreenView(
+      screenName: screenName,
+      screenPath: screenPath,
+    );
   }
 }
