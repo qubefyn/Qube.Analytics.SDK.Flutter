@@ -9,7 +9,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 
-// User Data Model
+
+import 'services/behavior_data_service.dart';
+
+
 class UserData {
   final String userId;
   final String deviceId;
@@ -30,17 +33,17 @@ class UserData {
   });
 
   Map<String, dynamic> toJson() => {
-        'userId': userId,
-        'deviceId': deviceId,
-        'deviceType': deviceType,
-        'ram': ram,
-        'cpuCores': cpuCores,
-        'ip': ip,
-        'country': country,
-      };
+    'userId': userId,
+    'deviceId': deviceId,
+    'deviceType': deviceType,
+    'ram': ram,
+    'cpuCores': cpuCores,
+    'ip': ip,
+    'country': country,
+  };
 }
 
-// Screen View Data Model
+
 class ScreenViewData {
   final String screenId;
   final String screenPath;
@@ -57,12 +60,12 @@ class ScreenViewData {
   });
 
   Map<String, dynamic> toJson() => {
-        'screenId': screenId,
-        'screenPath': screenPath,
-        'screenName': screenName,
-        'visitDateTime': visitDateTime.toIso8601String(),
-        'sessionId': sessionId,
-      };
+    'screenId': screenId,
+    'screenPath': screenPath,
+    'screenName': screenName,
+    'visitDateTime': visitDateTime.toIso8601String(),
+    'sessionId': sessionId,
+  };
 }
 
 // Error Data Model
@@ -84,13 +87,13 @@ class ErrorData {
   });
 
   Map<String, dynamic> toJson() => {
-        'sessionId': sessionId,
-        'deviceId': deviceId,
-        'screenId': screenId,
-        'errorMessage': errorMessage,
-        'errorStackTrace': errorStackTrace,
-        'isCustom': isCustom,
-      };
+    'sessionId': sessionId,
+    'deviceId': deviceId,
+    'screenId': screenId,
+    'errorMessage': errorMessage,
+    'errorStackTrace': errorStackTrace,
+    'isCustom': isCustom,
+  };
 }
 
 // Qube Analytics SDK
@@ -107,14 +110,20 @@ class QubeAnalyticsSDK {
   late String deviceId;
   String? lastScreenId;
 
-  Future<void> initialize({String? userId}) async {
+
+  late BehaviorDataService behaviorDataService;
+
+  Future<void> initialize({String? userId, required BuildContext context}) async {
     sessionId = _generateUniqueId();
     deviceId = await _initializeDeviceId();
     final generatedUserId = userId ?? _generateUniqueId();
     userData = await _collectDeviceData(generatedUserId);
     print("SDK Initialized: ${jsonEncode(userData)}");
 
-    // Set error tracking
+    // Initialize Behavior Data Service
+    behaviorDataService = BehaviorDataService(this);
+
+    behaviorDataService.startAutomaticTracking(context);
     FlutterError.onError = (FlutterErrorDetails details) {
       trackError(ErrorData(
         sessionId: sessionId,
@@ -149,11 +158,11 @@ class QubeAnalyticsSDK {
     if (Platform.isAndroid) {
       final androidInfo = await deviceInfo.androidInfo;
       deviceIdentifier =
-          "${androidInfo.id}-${androidInfo.model}-${androidInfo.product}";
+      "${androidInfo.id}-${androidInfo.model}-${androidInfo.product}";
     } else if (Platform.isIOS) {
       final iosInfo = await deviceInfo.iosInfo;
       deviceIdentifier =
-          "${iosInfo.identifierForVendor}-${iosInfo.utsname.machine}-${iosInfo.systemName}";
+      "${iosInfo.identifierForVendor}-${iosInfo.utsname.machine}-${iosInfo.systemName}";
     }
 
     return deviceIdentifier.hashCode.toString();
@@ -230,6 +239,42 @@ class QubeAnalyticsSDK {
 
   void trackError(ErrorData data) {
     print("Error: ${jsonEncode(data.toJson())}");
+  }
+
+  // Expose Behavior Data Methods
+  void trackClick({required double x, required double y, String? screenId}) {
+    behaviorDataService.trackClick(
+      x: x,
+      y: y,
+      userId: userData.userId,
+      screenId: screenId ?? lastScreenId,
+    );
+  }
+
+  void trackScroll({required double y, required double screenY, String? screenId}) {
+    behaviorDataService.trackScroll(
+      y: y,
+      screenY: screenY,
+      userId: userData.userId,
+      screenId: screenId ?? lastScreenId,
+    );
+  }
+
+  void trackCustomAction({
+    required String actionType,
+    double? x,
+    double? y,
+    double? screenY,
+    String? screenId,
+  }) {
+    behaviorDataService.trackCustomAction(
+      actionType: actionType,
+      x: x,
+      y: y,
+      screenY: screenY,
+      userId: userData.userId,
+      screenId: screenId ?? lastScreenId,
+    );
   }
 }
 
