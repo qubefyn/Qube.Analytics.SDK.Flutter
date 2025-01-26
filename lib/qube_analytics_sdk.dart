@@ -230,6 +230,29 @@ class QubeAnalyticsSDK {
   }
 }
 
+// ScreenTracker Widget
+class ScreenTracker extends InheritedWidget {
+  final String screenName;
+  final String screenPath;
+
+  const ScreenTracker({
+    super.key,
+    required this.screenName,
+    required this.screenPath,
+    required super.child,
+  });
+
+  static ScreenTracker? of(BuildContext context) {
+    return context.dependOnInheritedWidgetOfExactType<ScreenTracker>();
+  }
+
+  @override
+  bool updateShouldNotify(ScreenTracker oldWidget) {
+    return screenName != oldWidget.screenName ||
+        screenPath != oldWidget.screenPath;
+  }
+}
+
 // Navigator Observer
 class QubeNavigatorObserver extends NavigatorObserver {
   @override
@@ -237,25 +260,38 @@ class QubeNavigatorObserver extends NavigatorObserver {
     super.didPush(route, previousRoute);
 
     final sdk = QubeAnalyticsSDK();
-    final screenName = route.settings.name ?? _getScreenName(route);
-    final screenPath = screenName;
 
-    print(
-        "NavigatorObserver: Tracking Screen - screenName=$screenName, screenPath=$screenPath");
-
-    sdk.trackScreenView(ScreenViewData(
-      screenId: screenPath.hashCode.toString(),
-      screenPath: screenPath,
-      screenName: screenName,
-      visitDateTime: DateTime.now(),
-      sessionId: sdk.sessionId,
-    ));
-  }
-
-  String _getScreenName(Route<dynamic> route) {
     if (route is ModalRoute) {
-      return route.settings.name ?? route.runtimeType.toString();
+      final BuildContext? context = route.subtreeContext;
+      if (context != null) {
+        final tracker = ScreenTracker.of(context);
+
+        if (tracker != null) {
+          final screenId = tracker.screenPath.hashCode.toString();
+          print(
+              "ScreenTracker Data: screenName=${tracker.screenName}, screenPath=${tracker.screenPath}, screenId=$screenId");
+
+          sdk.trackScreenView(ScreenViewData(
+            screenId: screenId,
+            screenPath: tracker.screenPath,
+            screenName: tracker.screenName,
+            visitDateTime: DateTime.now(),
+            sessionId: sdk.sessionId,
+          ));
+        } else {
+          final defaultScreenName = route.settings.name ?? "Unknown Screen";
+          final defaultScreenPath = route.runtimeType.toString();
+          final screenId = defaultScreenPath.hashCode.toString();
+
+          sdk.trackScreenView(ScreenViewData(
+            screenId: screenId,
+            screenPath: defaultScreenPath,
+            screenName: defaultScreenName,
+            visitDateTime: DateTime.now(),
+            sessionId: sdk.sessionId,
+          ));
+        }
+      }
     }
-    return route.runtimeType.toString();
   }
 }
