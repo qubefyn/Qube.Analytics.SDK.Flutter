@@ -65,6 +65,34 @@ class ScreenViewData {
       };
 }
 
+// Error Data Model
+class ErrorData {
+  final String sessionId;
+  final String userId;
+  final String? screenId;
+  final String errorMessage;
+  final String errorStackTrace;
+  final bool isCustom;
+
+  ErrorData({
+    required this.sessionId,
+    required this.userId,
+    this.screenId,
+    required this.errorMessage,
+    required this.errorStackTrace,
+    required this.isCustom,
+  });
+
+  Map<String, dynamic> toJson() => {
+        'sessionId': sessionId,
+        'userId': userId,
+        'screenId': screenId,
+        'errorMessage': errorMessage,
+        'errorStackTrace': errorStackTrace,
+        'isCustom': isCustom,
+      };
+}
+
 // Qube Analytics SDK
 class QubeAnalyticsSDK {
   static final QubeAnalyticsSDK _instance = QubeAnalyticsSDK._internal();
@@ -87,10 +115,13 @@ class QubeAnalyticsSDK {
 
     // Set error tracking
     FlutterError.onError = (FlutterErrorDetails details) {
-      trackScreenError(
+      trackError(ErrorData(
+        sessionId: sessionId,
+        userId: userData.userId,
         errorMessage: details.exceptionAsString(),
-        stackTrace: details.stack.toString(),
-      );
+        errorStackTrace: details.stack.toString(),
+        isCustom: false,
+      ));
     };
   }
 
@@ -126,9 +157,42 @@ class QubeAnalyticsSDK {
     return deviceIdentifier.hashCode.toString();
   }
 
+  Future<String> _getIPAddress() async {
+    try {
+      const url = "https://api64.ipify.org?format=json";
+      final response = await http.get(Uri.parse(url));
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return data['ip'];
+      }
+    } catch (e) {
+      print("Error fetching Public IP: $e");
+    }
+    return "Unknown";
+  }
+
+  Future<String> _getCountry(String ipAddress) async {
+    try {
+      const apiKey = "df508899a9aa3c8b27e8cbedcb2dffb4";
+      final url =
+          "http://api.ipapi.com/$ipAddress?access_key=$apiKey&fields=country_name&output=json";
+      final response = await http.get(Uri.parse(url));
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return data['country_name'] ?? "Unknown";
+      } else {
+        print("Failed to fetch country: ${response.body}");
+      }
+    } catch (e) {
+      print("Error fetching country: $e");
+    }
+    return "Unknown";
+  }
+
   Future<UserData> _collectDeviceData(String userId) async {
     final deviceInfo = DeviceInfoPlugin();
-    String deviceType = "Unknown";
+    String deviceType = "";
     int ram = 0;
     int cpuCores = 0;
     final ipAddress = await _getIPAddress();
@@ -142,8 +206,8 @@ class QubeAnalyticsSDK {
     } else if (Platform.isIOS) {
       final iosInfo = await deviceInfo.iosInfo;
       deviceType = "iOS";
-      ram = 2; // Estimated value
-      cpuCores = 4; // Estimated value
+      ram = 2;
+      cpuCores = 4;
     }
 
     return UserData(
@@ -157,69 +221,48 @@ class QubeAnalyticsSDK {
     );
   }
 
-  Future<String> _getIPAddress() async {
-    try {
-      const url = "https://api64.ipify.org?format=json";
-      final response = await http.get(Uri.parse(url));
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        return data['ip'];
-      }
-    } catch (e) {
-      print("Error fetching IP: $e");
-    }
-    return "Unknown";
-  }
-
-  Future<String> _getCountry(String ipAddress) async {
-    try {
-      const apiKey = "df508899a9aa3c8b27e8cbedcb2dffb4";
-      final url =
-          "http://api.ipapi.com/$ipAddress?access_key=$apiKey&fields=country_name";
-      final response = await http.get(Uri.parse(url));
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        return data['country_name'] ?? "Unknown";
-      }
-    } catch (e) {
-      print("Error fetching country: $e");
-    }
-    return "Unknown";
-  }
-
-  void trackScreenView(
-      {required String screenName, required String screenPath}) {
-    final screenId = screenPath.hashCode.toString();
-    final data = ScreenViewData(
-      screenId: screenId,
-      screenPath: screenPath,
-      screenName: screenName,
-      visitDateTime: DateTime.now(),
-      sessionId: sessionId,
-    );
+  void trackScreenView(ScreenViewData data) {
     print("Screen View: ${jsonEncode(data.toJson())}");
   }
 
-  void trackScreenError({
-    required String errorMessage,
-    required String stackTrace,
-  }) {
-    print("Error: $errorMessage, StackTrace: $stackTrace");
+  void trackError(ErrorData data) {
+    print("Error: ${jsonEncode(data.toJson())}");
   }
 }
 
-// Navigator Observer
 class QubeNavigatorObserver extends NavigatorObserver {
+  final String Function(Route<dynamic> route)? screenNameResolver;
+
+  QubeNavigatorObserver({this.screenNameResolver});
+
   @override
   void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) {
     super.didPush(route, previousRoute);
 
-    final screenName = route.settings.name ?? route.runtimeType.toString();
-    final screenPath = route.runtimeType.toString();
+    final sdk = QubeAnalyticsSDK();
+    final screenName = _resolveScreenName(route);
 
-    QubeAnalyticsSDK().trackScreenView(
+    sdk.trackScreenView(ScreenViewData(
+      screenId: screenName.hashCode.toString(),
+      screenPath: screenName,
       screenName: screenName,
-      screenPath: screenPath,
-    );
+      visitDateTime: DateTime.now(),
+      sessionId: sdk.sessionId,
+    ));
+  }
+
+  String _resolveScreenName(Route<dynamic> route) {
+    // First, check if a custom screen name resolver is provided
+    if (screenNameResolver != null) {
+      return screenNameResolver!(route);
+    }
+
+    // Check route settings name
+    if (route.settings.name != null) {
+      return route.settings.name!;
+    }
+
+    // Fallback to route's runtime type
+    return route.runtimeType.toString();
   }
 }
