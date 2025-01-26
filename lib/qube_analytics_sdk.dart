@@ -222,7 +222,7 @@ class QubeAnalyticsSDK {
   }
 
   void trackScreenView(ScreenViewData data) {
-    print("Screen View: ${jsonEncode(data.toJson())}");
+    print("Screen View Details: ${jsonEncode(data.toJson())}");
   }
 
   void trackError(ErrorData data) {
@@ -260,11 +260,15 @@ class QubeNavigatorObserver extends NavigatorObserver {
     super.didPush(route, previousRoute);
 
     final context = navigator?.context;
+    final sdk = QubeAnalyticsSDK();
+
     if (context != null) {
       final tracker = ScreenTracker.of(context);
+
       if (tracker != null) {
-        final sdk = QubeAnalyticsSDK();
         final screenId = tracker.screenPath.hashCode.toString();
+        print(
+            "Screen Tracker Data: screenName=${tracker.screenName}, screenPath=${tracker.screenPath}, screenId=$screenId");
 
         sdk.trackScreenView(ScreenViewData(
           screenId: screenId,
@@ -273,7 +277,24 @@ class QubeNavigatorObserver extends NavigatorObserver {
           visitDateTime: DateTime.now(),
           sessionId: sdk.sessionId,
         ));
+      } else {
+        final defaultScreenName = route.settings.name ?? "Unknown Screen";
+        final defaultScreenPath = route.runtimeType.toString();
+        final screenId = defaultScreenPath.hashCode.toString();
+
+        print(
+            "Default Screen Data: screenName=$defaultScreenName, screenPath=$defaultScreenPath, screenId=$screenId");
+
+        sdk.trackScreenView(ScreenViewData(
+          screenId: screenId,
+          screenPath: defaultScreenPath,
+          screenName: defaultScreenName,
+          visitDateTime: DateTime.now(),
+          sessionId: sdk.sessionId,
+        ));
       }
+    } else {
+      print("Navigator context is null.");
     }
   }
 }
