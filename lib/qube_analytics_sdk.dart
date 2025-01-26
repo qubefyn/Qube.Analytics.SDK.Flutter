@@ -230,85 +230,32 @@ class QubeAnalyticsSDK {
   }
 }
 
-// ScreenTracker Widget
-class ScreenTracker extends InheritedWidget {
-  final String screenName;
-  final String screenPath;
-
-  const ScreenTracker({
-    super.key,
-    required this.screenName,
-    required this.screenPath,
-    required super.child,
-  });
-
-  static ScreenTracker? of(BuildContext context) {
-    return context.dependOnInheritedWidgetOfExactType<ScreenTracker>();
-  }
-
-  @override
-  bool updateShouldNotify(ScreenTracker oldWidget) {
-    return screenName != oldWidget.screenName ||
-        screenPath != oldWidget.screenPath;
-  }
-}
-
 // Navigator Observer
 class QubeNavigatorObserver extends NavigatorObserver {
   @override
   void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) {
     super.didPush(route, previousRoute);
 
-    print("NavigatorObserver: didPush called"); // Debug: بدأ تنفيذ didPush
-
     final sdk = QubeAnalyticsSDK();
+    final screenName = route.settings.name ?? _getScreenName(route);
+    final screenPath = screenName;
 
+    print(
+        "NavigatorObserver: Tracking Screen - screenName=$screenName, screenPath=$screenPath");
+
+    sdk.trackScreenView(ScreenViewData(
+      screenId: screenPath.hashCode.toString(),
+      screenPath: screenPath,
+      screenName: screenName,
+      visitDateTime: DateTime.now(),
+      sessionId: sdk.sessionId,
+    ));
+  }
+
+  String _getScreenName(Route<dynamic> route) {
     if (route is ModalRoute) {
-      print(
-          "NavigatorObserver: Route is ModalRoute"); // Debug: Route نوعه ModalRoute
-
-      final BuildContext? context = route.subtreeContext;
-      if (context != null) {
-        print(
-            "NavigatorObserver: SubtreeContext found"); // Debug: تم العثور على SubtreeContext
-
-        final tracker = ScreenTracker.of(context);
-
-        if (tracker != null) {
-          print(
-              "NavigatorObserver: ScreenTracker found"); // Debug: تم العثور على ScreenTracker
-          final screenId = tracker.screenPath.hashCode.toString();
-
-          sdk.trackScreenView(ScreenViewData(
-            screenId: screenId,
-            screenPath: tracker.screenPath,
-            screenName: tracker.screenName,
-            visitDateTime: DateTime.now(),
-            sessionId: sdk.sessionId,
-          ));
-        } else {
-          print(
-              "NavigatorObserver: ScreenTracker not found"); // Debug: لم يتم العثور على ScreenTracker
-
-          final defaultScreenName = route.settings.name ?? "Unknown Screen";
-          final defaultScreenPath = route.runtimeType.toString();
-          final screenId = defaultScreenPath.hashCode.toString();
-
-          sdk.trackScreenView(ScreenViewData(
-            screenId: screenId,
-            screenPath: defaultScreenPath,
-            screenName: defaultScreenName,
-            visitDateTime: DateTime.now(),
-            sessionId: sdk.sessionId,
-          ));
-        }
-      } else {
-        print(
-            "NavigatorObserver: SubtreeContext is null"); // Debug: SubtreeContext غير موجود
-      }
-    } else {
-      print(
-          "NavigatorObserver: Route is not a ModalRoute"); // Debug: Route ليس من نوع ModalRoute
+      return route.settings.name ?? route.runtimeType.toString();
     }
+    return route.runtimeType.toString();
   }
 }
