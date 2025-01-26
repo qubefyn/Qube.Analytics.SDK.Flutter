@@ -68,7 +68,7 @@ class ScreenViewData {
 // Error Data Model
 class ErrorData {
   final String sessionId;
-  final String userId;
+  final String deviceId;
   final String? screenId;
   final String errorMessage;
   final String errorStackTrace;
@@ -76,7 +76,7 @@ class ErrorData {
 
   ErrorData({
     required this.sessionId,
-    required this.userId,
+    required this.deviceId,
     this.screenId,
     required this.errorMessage,
     required this.errorStackTrace,
@@ -85,7 +85,7 @@ class ErrorData {
 
   Map<String, dynamic> toJson() => {
         'sessionId': sessionId,
-        'userId': userId,
+        'deviceId': deviceId,
         'screenId': screenId,
         'errorMessage': errorMessage,
         'errorStackTrace': errorStackTrace,
@@ -105,6 +105,7 @@ class QubeAnalyticsSDK {
   late String sessionId;
   late UserData userData;
   late String deviceId;
+  String? lastScreenId;
 
   Future<void> initialize({String? userId}) async {
     sessionId = _generateUniqueId();
@@ -117,7 +118,8 @@ class QubeAnalyticsSDK {
     FlutterError.onError = (FlutterErrorDetails details) {
       trackError(ErrorData(
         sessionId: sessionId,
-        userId: userData.userId,
+        deviceId: deviceId,
+        screenId: lastScreenId,
         errorMessage: details.exceptionAsString(),
         errorStackTrace: details.stack.toString(),
         isCustom: false,
@@ -222,6 +224,7 @@ class QubeAnalyticsSDK {
   }
 
   void trackScreenView(ScreenViewData data) {
+    lastScreenId = data.screenId; // Save the last screen ID
     print("Screen View: ${jsonEncode(data.toJson())}");
   }
 
@@ -255,15 +258,13 @@ class QubeNavigatorObserver extends NavigatorObserver {
 
   String _extractScreenName(Route<dynamic> route) {
     try {
-      // Check if the first child widget implements ScreenTracker
       if (route.navigator?.context.widget is ScreenTracker) {
         return (route.navigator!.context.widget as ScreenTracker).screenName;
       }
     } catch (e) {
-      // Fallback if extraction fails
+      print('Error extracting screen name: $e');
     }
 
-    // Fallback to route settings name or route type
     return route.settings.name ?? route.runtimeType.toString();
   }
 }
