@@ -107,15 +107,15 @@ class BehaviorDataService {
     log("Behavior Data: ${jsonEncode(data.toJson())}", name: "Behavior Data");
   }
 
-  // Automatically track clicks and scrolls
-  void startAutomaticTracking(BuildContext context) {
-    _trackClicks(context);
-    _trackScrolls(context);
+   void startAutomaticTracking(BuildContext context) {
+     WidgetsBinding.instance.addPostFrameCallback((_) {
+      _trackClicks(context);
+      _trackScrolls(context);
+    });
   }
 
   void _trackClicks(BuildContext context) {
-    // Wrap the app with a Listener to detect clicks
-    final listener = Listener(
+     final listener = Listener(
       onPointerDown: (PointerDownEvent event) {
         final RenderBox box = context.findRenderObject() as RenderBox;
         final offset = box.globalToLocal(event.position);
@@ -129,13 +129,11 @@ class BehaviorDataService {
       child: Container(), // Empty container to avoid UI changes
     );
 
-    // Add the listener to the overlay
-    Overlay.of(context)?.insert(OverlayEntry(builder: (context) => listener));
+     Overlay.of(context)?.insert(OverlayEntry(builder: (context) => listener));
   }
 
   void _trackScrolls(BuildContext context) {
-    // Track scrolls using NotificationListener
-    final notificationListener = NotificationListener<ScrollNotification>(
+     final notificationListener = NotificationListener<ScrollNotification>(
       onNotification: (ScrollNotification notification) {
         if (notification is ScrollUpdateNotification) {
           trackScroll(
@@ -147,11 +145,10 @@ class BehaviorDataService {
         }
         return false;
       },
-      child: Container(), // Empty container to avoid UI changes
+      child: Container(),
     );
 
-    // Add the notification listener to the overlay
-    Overlay.of(context)
+     Overlay.of(context)
         ?.insert(OverlayEntry(builder: (context) => notificationListener));
   }
 }
