@@ -105,7 +105,7 @@ class QubeAnalyticsSDK {
 
   late BehaviorDataService behaviorDataService;
 
-  Future<void> initialize({String? userId, }) async {
+  Future<void> initialize({String? userId}) async {
     sessionId = _generateUniqueId();
     deviceId = await _initializeDeviceId();
     final generatedUserId = userId ?? _generateUniqueId();
@@ -233,12 +233,14 @@ class QubeAnalyticsSDK {
     );
   }
 
-  void trackScroll({required double y, required double screenY, String? screenId}) {
+  void trackScroll({required double y, required double screenY, String? screenId, double? x, double? screenX}) {
     behaviorDataService.trackScroll(
       y: y,
       screenY: screenY,
       userId: userData.userId,
       screenId: screenId ?? lastScreenId,
+      x: x,
+      screenX: screenX,
     );
   }
 
@@ -247,6 +249,8 @@ class QubeAnalyticsSDK {
     double? x,
     double? y,
     double? screenY,
+    double? screenX,
+    required String userId,
     String? screenId,
   }) {
     behaviorDataService.trackCustomAction(
@@ -254,6 +258,7 @@ class QubeAnalyticsSDK {
       x: x,
       y: y,
       screenY: screenY,
+      screenX: screenX,
       userId: userData.userId,
       screenId: screenId ?? lastScreenId,
     );

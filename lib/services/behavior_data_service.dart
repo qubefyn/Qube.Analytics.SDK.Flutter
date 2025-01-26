@@ -9,6 +9,7 @@ class BehaviorData {
   final double? x;
   final double? y;
   final double? screenY;
+  final double? screenX;
   final DateTime actionDateTime;
   final String sessionId;
   final String userId;
@@ -19,6 +20,7 @@ class BehaviorData {
     this.x,
     this.y,
     this.screenY,
+    this.screenX,
     required this.actionDateTime,
     required this.sessionId,
     required this.userId,
@@ -30,6 +32,7 @@ class BehaviorData {
     'x': x,
     'y': y,
     'screenY': screenY,
+    'screenX': screenX,
     'actionDateTime': actionDateTime.toIso8601String(),
     'sessionId': sessionId,
     'userId': userId,
@@ -66,11 +69,15 @@ class BehaviorDataService {
     required double screenY,
     required String userId,
     String? screenId,
+    double? x,
+    double? screenX,
   }) {
     final behaviorData = BehaviorData(
       actionType: 'scroll',
+      x: x,
       y: y,
       screenY: screenY,
+      screenX: screenX,
       actionDateTime: DateTime.now(),
       sessionId: _sdk.sessionId,
       userId: userId,
@@ -85,6 +92,7 @@ class BehaviorDataService {
     double? x,
     double? y,
     double? screenY,
+    double? screenX,
     required String userId,
     String? screenId,
   }) {
@@ -93,6 +101,7 @@ class BehaviorDataService {
       x: x,
       y: y,
       screenY: screenY,
+      screenX: screenX,
       actionDateTime: DateTime.now(),
       sessionId: _sdk.sessionId,
       userId: userId,
@@ -134,9 +143,12 @@ class BehaviorDataService {
     return NotificationListener<ScrollNotification>(
       onNotification: (ScrollNotification notification) {
         if (notification is ScrollUpdateNotification) {
+          final metrics = notification.metrics;
           trackScroll(
-            y: notification.metrics.pixels,
-            screenY: notification.metrics.maxScrollExtent,
+            y: metrics.pixels,
+            screenY: metrics.maxScrollExtent,
+            x: metrics.pixels, // Track horizontal scroll
+            screenX: metrics.maxScrollExtent, // Track horizontal scroll
             userId: _sdk.userData.userId,
             screenId: _sdk.lastScreenId,
           );
