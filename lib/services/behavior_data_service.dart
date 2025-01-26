@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:developer';
 
@@ -147,8 +148,8 @@ class BehaviorDataService {
           trackScroll(
             y: metrics.pixels,
             screenY: metrics.maxScrollExtent,
-            x: metrics.pixels, // Track horizontal scroll
-            screenX: metrics.maxScrollExtent, // Track horizontal scroll
+            x: metrics.pixels,
+            screenX: metrics.maxScrollExtent,
             userId: _sdk.userData.userId,
             screenId: _sdk.lastScreenId,
           );
