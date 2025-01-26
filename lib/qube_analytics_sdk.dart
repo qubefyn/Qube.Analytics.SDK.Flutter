@@ -260,41 +260,43 @@ class QubeNavigatorObserver extends NavigatorObserver {
     super.didPush(route, previousRoute);
 
     final sdk = QubeAnalyticsSDK();
-    final context = navigator?.context;
 
-    if (context != null) {
-      final tracker = ScreenTracker.of(context);
+    if (route is ModalRoute) {
+      final BuildContext? context = route.subtreeContext;
+      if (context != null) {
+        final tracker = ScreenTracker.of(context);
 
-      if (tracker != null) {
-        final screenId = tracker.screenPath.hashCode.toString();
-        print(
-            "Screen Tracker Data: screenName=${tracker.screenName}, screenPath=${tracker.screenPath}, screenId=$screenId");
+        if (tracker != null) {
+          final screenId = tracker.screenPath.hashCode.toString();
+          print(
+              "Screen Tracker Data: screenName=${tracker.screenName}, screenPath=${tracker.screenPath}, screenId=$screenId");
 
-        sdk.trackScreenView(ScreenViewData(
-          screenId: screenId,
-          screenPath: tracker.screenPath,
-          screenName: tracker.screenName,
-          visitDateTime: DateTime.now(),
-          sessionId: sdk.sessionId,
-        ));
-      } else {
-        final defaultScreenName = route.settings.name ?? "Unknown Screen";
-        final defaultScreenPath = route.runtimeType.toString();
-        final screenId = defaultScreenPath.hashCode.toString();
+          sdk.trackScreenView(ScreenViewData(
+            screenId: screenId,
+            screenPath: tracker.screenPath,
+            screenName: tracker.screenName,
+            visitDateTime: DateTime.now(),
+            sessionId: sdk.sessionId,
+          ));
+        } else {
+          final defaultScreenName = route.settings.name ?? "Unknown Screen";
+          final defaultScreenPath = route.runtimeType.toString();
+          final screenId = defaultScreenPath.hashCode.toString();
 
-        print(
-            "Default Screen Data: screenName=$defaultScreenName, screenPath=$defaultScreenPath, screenId=$screenId");
+          print(
+              "Default Screen Data: screenName=$defaultScreenName, screenPath=$defaultScreenPath, screenId=$screenId");
 
-        sdk.trackScreenView(ScreenViewData(
-          screenId: screenId,
-          screenPath: defaultScreenPath,
-          screenName: defaultScreenName,
-          visitDateTime: DateTime.now(),
-          sessionId: sdk.sessionId,
-        ));
+          sdk.trackScreenView(ScreenViewData(
+            screenId: screenId,
+            screenPath: defaultScreenPath,
+            screenName: defaultScreenName,
+            visitDateTime: DateTime.now(),
+            sessionId: sdk.sessionId,
+          ));
+        }
       }
     } else {
-      print("Navigator context is null.");
+      print("Route is not a ModalRoute.");
     }
   }
 }
