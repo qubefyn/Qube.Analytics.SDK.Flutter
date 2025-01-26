@@ -16,11 +16,11 @@ class ErrorData {
   });
 
   Map<String, dynamic> toJson() => {
-    'sessionId': sessionId,
-    'userId': userId,
-    'screenId': screenId,
-    'errorMessage': errorMessage,
-    'errorStackTrace': errorStackTrace,
-    'isCustom': isCustom,
-  };
+        'sessionId': sessionId,
+        'userId': userId,
+        'screenId': screenId,
+        'errorMessage': errorMessage,
+        'errorStackTrace': errorStackTrace,
+        'isCustom': isCustom,
+      };
 }

@@ -230,27 +230,50 @@ class QubeAnalyticsSDK {
   }
 }
 
+// ScreenTracker Widget
+class ScreenTracker extends InheritedWidget {
+  final String screenName;
+  final String screenPath;
+
+  const ScreenTracker({
+    super.key,
+    required this.screenName,
+    required this.screenPath,
+    required super.child,
+  });
+
+  static ScreenTracker? of(BuildContext context) {
+    return context.dependOnInheritedWidgetOfExactType<ScreenTracker>();
+  }
+
+  @override
+  bool updateShouldNotify(ScreenTracker oldWidget) {
+    return screenName != oldWidget.screenName ||
+        screenPath != oldWidget.screenPath;
+  }
+}
+
+// Navigator Observer
 class QubeNavigatorObserver extends NavigatorObserver {
   @override
   void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) {
     super.didPush(route, previousRoute);
 
-    final screenName = route.settings.name ?? _getScreenName(route);
-    final sdk = QubeAnalyticsSDK();
+    final context = navigator?.context;
+    if (context != null) {
+      final tracker = ScreenTracker.of(context);
+      if (tracker != null) {
+        final sdk = QubeAnalyticsSDK();
+        final screenId = tracker.screenPath.hashCode.toString();
 
-    sdk.trackScreenView(ScreenViewData(
-      screenId: screenName.hashCode.toString(),
-      screenPath: screenName,
-      screenName: screenName,
-      visitDateTime: DateTime.now(),
-      sessionId: sdk.sessionId,
-    ));
-  }
-
-  String _getScreenName(Route<dynamic> route) {
-    if (route is ModalRoute) {
-      return route.settings.name ?? route.runtimeType.toString();
+        sdk.trackScreenView(ScreenViewData(
+          screenId: screenId,
+          screenPath: tracker.screenPath,
+          screenName: tracker.screenName,
+          visitDateTime: DateTime.now(),
+          sessionId: sdk.sessionId,
+        ));
+      }
     }
-    return route.runtimeType.toString();
   }
 }
