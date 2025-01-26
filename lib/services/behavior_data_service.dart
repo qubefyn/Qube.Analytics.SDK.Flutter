@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:convert';
 import 'dart:developer';
 
@@ -107,15 +106,14 @@ class BehaviorDataService {
     log("Behavior Data: ${jsonEncode(data.toJson())}", name: "Behavior Data");
   }
 
-   void startAutomaticTracking(BuildContext context) {
-     WidgetsBinding.instance.addPostFrameCallback((_) {
+  void startAutomaticTracking(BuildContext context) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
       _trackClicks(context);
-      _trackScrolls(context);
     });
   }
 
   void _trackClicks(BuildContext context) {
-     final listener = Listener(
+    final listener = Listener(
       onPointerDown: (PointerDownEvent event) {
         final RenderBox box = context.findRenderObject() as RenderBox;
         final offset = box.globalToLocal(event.position);
@@ -126,14 +124,14 @@ class BehaviorDataService {
           screenId: _sdk.lastScreenId,
         );
       },
-      child: Container(), // Empty container to avoid UI changes
+      child: Container(),
     );
 
-     Overlay.of(context)?.insert(OverlayEntry(builder: (context) => listener));
+    Overlay.of(context)?.insert(OverlayEntry(builder: (context) => listener));
   }
 
-  void _trackScrolls(BuildContext context) {
-     final notificationListener = NotificationListener<ScrollNotification>(
+  Widget wrapWithScrollTracking({required Widget child}) {
+    return NotificationListener<ScrollNotification>(
       onNotification: (ScrollNotification notification) {
         if (notification is ScrollUpdateNotification) {
           trackScroll(
@@ -145,10 +143,7 @@ class BehaviorDataService {
         }
         return false;
       },
-      child: Container(),
+      child: child,
     );
-
-     Overlay.of(context)
-        ?.insert(OverlayEntry(builder: (context) => notificationListener));
   }
 }

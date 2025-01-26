@@ -1,5 +1,3 @@
-library qube_analytics_sdk;
-
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -9,9 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 
-
 import 'services/behavior_data_service.dart';
-
 
 class UserData {
   final String userId;
@@ -43,7 +39,6 @@ class UserData {
   };
 }
 
-
 class ScreenViewData {
   final String screenId;
   final String screenPath;
@@ -68,7 +63,6 @@ class ScreenViewData {
   };
 }
 
-// Error Data Model
 class ErrorData {
   final String sessionId;
   final String deviceId;
@@ -96,7 +90,6 @@ class ErrorData {
   };
 }
 
-// Qube Analytics SDK
 class QubeAnalyticsSDK {
   static final QubeAnalyticsSDK _instance = QubeAnalyticsSDK._internal();
   factory QubeAnalyticsSDK() => _instance;
@@ -110,7 +103,6 @@ class QubeAnalyticsSDK {
   late String deviceId;
   String? lastScreenId;
 
-
   late BehaviorDataService behaviorDataService;
 
   Future<void> initialize({String? userId, required BuildContext context}) async {
@@ -120,10 +112,9 @@ class QubeAnalyticsSDK {
     userData = await _collectDeviceData(generatedUserId);
     print("SDK Initialized: ${jsonEncode(userData)}");
 
-    // Initialize Behavior Data Service
     behaviorDataService = BehaviorDataService(this);
-
     behaviorDataService.startAutomaticTracking(context);
+
     FlutterError.onError = (FlutterErrorDetails details) {
       trackError(ErrorData(
         sessionId: sessionId,
@@ -136,15 +127,11 @@ class QubeAnalyticsSDK {
     };
   }
 
-  String _generateUniqueId() =>
-      DateTime.now().millisecondsSinceEpoch.toString();
+  String _generateUniqueId() => DateTime.now().millisecondsSinceEpoch.toString();
 
   Future<String> _initializeDeviceId() async {
     String? storedDeviceId = await _storage.read(key: _deviceIdKey);
-
-    if (storedDeviceId != null) {
-      return storedDeviceId;
-    }
+    if (storedDeviceId != null) return storedDeviceId;
 
     final newDeviceId = await _generateDeviceId();
     await _storage.write(key: _deviceIdKey, value: newDeviceId);
@@ -157,12 +144,10 @@ class QubeAnalyticsSDK {
 
     if (Platform.isAndroid) {
       final androidInfo = await deviceInfo.androidInfo;
-      deviceIdentifier =
-      "${androidInfo.id}-${androidInfo.model}-${androidInfo.product}";
+      deviceIdentifier = "${androidInfo.id}-${androidInfo.model}-${androidInfo.product}";
     } else if (Platform.isIOS) {
       final iosInfo = await deviceInfo.iosInfo;
-      deviceIdentifier =
-      "${iosInfo.identifierForVendor}-${iosInfo.utsname.machine}-${iosInfo.systemName}";
+      deviceIdentifier = "${iosInfo.identifierForVendor}-${iosInfo.utsname.machine}-${iosInfo.systemName}";
     }
 
     return deviceIdentifier.hashCode.toString();
@@ -185,8 +170,7 @@ class QubeAnalyticsSDK {
   Future<String> _getCountry(String ipAddress) async {
     try {
       const apiKey = "df508899a9aa3c8b27e8cbedcb2dffb4";
-      final url =
-          "http://api.ipapi.com/$ipAddress?access_key=$apiKey&fields=country_name&output=json";
+      final url = "http://api.ipapi.com/$ipAddress?access_key=$apiKey&fields=country_name&output=json";
       final response = await http.get(Uri.parse(url));
 
       if (response.statusCode == 200) {
@@ -233,7 +217,7 @@ class QubeAnalyticsSDK {
   }
 
   void trackScreenView(ScreenViewData data) {
-    lastScreenId = data.screenId; // Save the last screen ID
+    lastScreenId = data.screenId;
     print("Screen View: ${jsonEncode(data.toJson())}");
   }
 
@@ -241,7 +225,6 @@ class QubeAnalyticsSDK {
     print("Error: ${jsonEncode(data.toJson())}");
   }
 
-  // Expose Behavior Data Methods
   void trackClick({required double x, required double y, String? screenId}) {
     behaviorDataService.trackClick(
       x: x,
