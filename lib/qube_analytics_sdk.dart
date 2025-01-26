@@ -259,17 +259,25 @@ class QubeNavigatorObserver extends NavigatorObserver {
   void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) {
     super.didPush(route, previousRoute);
 
+    print("NavigatorObserver: didPush called"); // Debug: بدأ تنفيذ didPush
+
     final sdk = QubeAnalyticsSDK();
 
     if (route is ModalRoute) {
+      print(
+          "NavigatorObserver: Route is ModalRoute"); // Debug: Route نوعه ModalRoute
+
       final BuildContext? context = route.subtreeContext;
       if (context != null) {
+        print(
+            "NavigatorObserver: SubtreeContext found"); // Debug: تم العثور على SubtreeContext
+
         final tracker = ScreenTracker.of(context);
 
         if (tracker != null) {
-          final screenId = tracker.screenPath.hashCode.toString();
           print(
-              "Screen Tracker Data: screenName=${tracker.screenName}, screenPath=${tracker.screenPath}, screenId=$screenId");
+              "NavigatorObserver: ScreenTracker found"); // Debug: تم العثور على ScreenTracker
+          final screenId = tracker.screenPath.hashCode.toString();
 
           sdk.trackScreenView(ScreenViewData(
             screenId: screenId,
@@ -279,12 +287,12 @@ class QubeNavigatorObserver extends NavigatorObserver {
             sessionId: sdk.sessionId,
           ));
         } else {
+          print(
+              "NavigatorObserver: ScreenTracker not found"); // Debug: لم يتم العثور على ScreenTracker
+
           final defaultScreenName = route.settings.name ?? "Unknown Screen";
           final defaultScreenPath = route.runtimeType.toString();
           final screenId = defaultScreenPath.hashCode.toString();
-
-          print(
-              "Default Screen Data: screenName=$defaultScreenName, screenPath=$defaultScreenPath, screenId=$screenId");
 
           sdk.trackScreenView(ScreenViewData(
             screenId: screenId,
@@ -294,9 +302,13 @@ class QubeNavigatorObserver extends NavigatorObserver {
             sessionId: sdk.sessionId,
           ));
         }
+      } else {
+        print(
+            "NavigatorObserver: SubtreeContext is null"); // Debug: SubtreeContext غير موجود
       }
     } else {
-      print("Route is not a ModalRoute.");
+      print(
+          "NavigatorObserver: Route is not a ModalRoute"); // Debug: Route ليس من نوع ModalRoute
     }
   }
 }
