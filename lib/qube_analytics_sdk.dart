@@ -113,7 +113,6 @@ class QubeAnalyticsSDK {
     print("SDK Initialized: ${jsonEncode(userData)}");
 
     behaviorDataService = BehaviorDataService(this);
-    behaviorDataService.startAutomaticTracking(context);
 
     FlutterError.onError = (FlutterErrorDetails details) {
       trackError(ErrorData(
