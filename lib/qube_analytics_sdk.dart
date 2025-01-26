@@ -259,8 +259,8 @@ class QubeNavigatorObserver extends NavigatorObserver {
   void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) {
     super.didPush(route, previousRoute);
 
-    final context = navigator?.context;
     final sdk = QubeAnalyticsSDK();
+    final context = navigator?.context;
 
     if (context != null) {
       final tracker = ScreenTracker.of(context);
