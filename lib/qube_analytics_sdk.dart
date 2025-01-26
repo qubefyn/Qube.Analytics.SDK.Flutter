@@ -105,7 +105,7 @@ class QubeAnalyticsSDK {
 
   late BehaviorDataService behaviorDataService;
 
-  Future<void> initialize({String? userId, required BuildContext context}) async {
+  Future<void> initialize({String? userId, }) async {
     sessionId = _generateUniqueId();
     deviceId = await _initializeDeviceId();
     final generatedUserId = userId ?? _generateUniqueId();
