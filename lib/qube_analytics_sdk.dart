@@ -230,7 +230,7 @@ class QubeAnalyticsSDK {
   }
 }
 
-abstract class TrackableScreen {
+abstract class ScreenTracker {
   String get screenName {
     return runtimeType.toString();
   }
@@ -242,7 +242,7 @@ class QubeNavigatorObserver extends NavigatorObserver {
     super.didPush(route, previousRoute);
 
     final sdk = QubeAnalyticsSDK();
-    final screenName = _resolveScreenName(route);
+    final screenName = _extractScreenName(route);
 
     sdk.trackScreenView(ScreenViewData(
       screenId: screenName.hashCode.toString(),
@@ -253,22 +253,17 @@ class QubeNavigatorObserver extends NavigatorObserver {
     ));
   }
 
-  String _resolveScreenName(Route<dynamic> route) {
-    // Check route settings name first
-    if (route.settings.name != null) {
-      return route.settings.name!;
-    }
-
-    // Try to get screen name from widget
+  String _extractScreenName(Route<dynamic> route) {
     try {
-      if (route.navigator?.context.widget is TrackableScreen) {
-        return (route.navigator!.context.widget as TrackableScreen).screenName;
+      // Check if the first child widget implements ScreenTracker
+      if (route.navigator?.context.widget is ScreenTracker) {
+        return (route.navigator!.context.widget as ScreenTracker).screenName;
       }
     } catch (e) {
-      // Ignore errors
+      // Fallback if extraction fails
     }
 
-    // Fallback to route type
-    return route.runtimeType.toString();
+    // Fallback to route settings name or route type
+    return route.settings.name ?? route.runtimeType.toString();
   }
 }
