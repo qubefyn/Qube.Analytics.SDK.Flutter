@@ -118,14 +118,25 @@ class BehaviorDataService {
 
   void startAutomaticTracking(BuildContext context) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _trackClicks(context);
+      _ensureOverlayExists(context);
     });
   }
 
-  void _trackClicks(BuildContext context) {
+  void _ensureOverlayExists(BuildContext context) {
+    final overlay = Overlay.of(context);
+    if (overlay == null) {
+      log("Overlay not found in the provided context. Ensure the context is part of a MaterialApp or Navigator widget tree.",
+          name: "BehaviorDataService");
+      return;
+    }
+
+    _trackClicks(overlay);
+  }
+
+  void _trackClicks(OverlayState overlay) {
     final listener = Listener(
       onPointerDown: (PointerDownEvent event) {
-        final RenderBox box = context.findRenderObject() as RenderBox;
+        final box = overlay.context.findRenderObject() as RenderBox;
         final offset = box.globalToLocal(event.position);
         trackClick(
           x: offset.dx,
@@ -137,7 +148,7 @@ class BehaviorDataService {
       child: Container(),
     );
 
-    Overlay.of(context)?.insert(OverlayEntry(builder: (context) => listener));
+    overlay.insert(OverlayEntry(builder: (context) => listener));
   }
 
   Widget wrapWithScrollTracking({required Widget child}) {
