@@ -1,5 +1,3 @@
-library qube_analytics_sdk;
-
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -9,7 +7,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 
-// User Data Model
+import 'services/behavior_data_service.dart';
+
 class UserData {
   final String userId;
   final String deviceId;
@@ -43,7 +42,6 @@ class UserData {
       };
 }
 
-// Screen View Data Model
 class ScreenViewData {
   final String screenId;
   final String screenPath;
@@ -68,7 +66,6 @@ class ScreenViewData {
       };
 }
 
-// Error Data Model
 class ErrorData {
   final String sessionId;
   final String deviceId;
@@ -96,7 +93,6 @@ class ErrorData {
       };
 }
 
-// Qube Analytics SDK
 class QubeAnalyticsSDK {
   static final QubeAnalyticsSDK _instance = QubeAnalyticsSDK._internal();
   factory QubeAnalyticsSDK() => _instance;
@@ -110,6 +106,8 @@ class QubeAnalyticsSDK {
   late String deviceId;
   String? lastScreenId;
 
+  late BehaviorDataService behaviorDataService;
+
   Future<void> initialize({String? userId}) async {
     sessionId = _generateUniqueId();
     deviceId = await _initializeDeviceId();
@@ -117,7 +115,8 @@ class QubeAnalyticsSDK {
     userData = await _collectDeviceData(generatedUserId);
     print("SDK Initialized: ${jsonEncode(userData)}");
 
-    // Set error tracking
+    behaviorDataService = BehaviorDataService(this);
+
     FlutterError.onError = (FlutterErrorDetails details) {
       trackError(ErrorData(
         sessionId: sessionId,
@@ -135,10 +134,7 @@ class QubeAnalyticsSDK {
 
   Future<String> _initializeDeviceId() async {
     String? storedDeviceId = await _storage.read(key: _deviceIdKey);
-
-    if (storedDeviceId != null) {
-      return storedDeviceId;
-    }
+    if (storedDeviceId != null) return storedDeviceId;
 
     final newDeviceId = await _generateDeviceId();
     await _storage.write(key: _deviceIdKey, value: newDeviceId);
@@ -219,11 +215,92 @@ class QubeAnalyticsSDK {
   }
 
   void trackScreenView(ScreenViewData data) {
-    lastScreenId = data.screenId; // Save the last screen ID
+    lastScreenId = data.screenId;
     print("Screen View: ${jsonEncode(data.toJson())}");
   }
 
   void trackError(ErrorData data) {
     print("Error: ${jsonEncode(data.toJson())}");
+  }
+
+  void trackClick({required double x, required double y, String? screenId}) {
+    behaviorDataService.trackClick(
+      x: x,
+      y: y,
+      userId: userData.userId,
+      screenId: screenId ?? lastScreenId,
+    );
+  }
+
+  void trackScroll(
+      {required double y,
+      required double screenY,
+      String? screenId,
+      double? x,
+      double? screenX}) {
+    behaviorDataService.trackScroll(
+      y: y,
+      screenY: screenY,
+      userId: userData.userId,
+      screenId: screenId ?? lastScreenId,
+      x: x,
+      screenX: screenX,
+    );
+  }
+
+  void trackCustomAction({
+    required String actionType,
+    double? x,
+    double? y,
+    double? screenY,
+    double? screenX,
+    required String userId,
+    String? screenId,
+  }) {
+    behaviorDataService.trackCustomAction(
+      actionType: actionType,
+      x: x,
+      y: y,
+      screenY: screenY,
+      screenX: screenX,
+      userId: userData.userId,
+      screenId: screenId ?? lastScreenId,
+    );
+  }
+}
+
+abstract class ScreenTracker {
+  String get screenName {
+    return runtimeType.toString();
+  }
+}
+
+class QubeNavigatorObserver extends NavigatorObserver {
+  @override
+  void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    super.didPush(route, previousRoute);
+
+    final sdk = QubeAnalyticsSDK();
+    final screenName = _extractScreenName(route);
+
+    sdk.trackScreenView(ScreenViewData(
+      screenId: screenName.hashCode.toString(),
+      screenPath: screenName,
+      screenName: screenName,
+      visitDateTime: DateTime.now(),
+      sessionId: sdk.sessionId,
+    ));
+  }
+
+  String _extractScreenName(Route<dynamic> route) {
+    try {
+      if (route.navigator?.context.widget is ScreenTracker) {
+        return (route.navigator!.context.widget as ScreenTracker).screenName;
+      }
+    } catch (e) {
+      print('Error extracting screen name: $e');
+    }
+
+    return route.settings.name ?? route.runtimeType.toString();
   }
 }
