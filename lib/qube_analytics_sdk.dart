@@ -1,3 +1,5 @@
+library qube_analytics_sdk;
+
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -7,8 +9,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 
-import 'services/behavior_data_service.dart';
-
+// User Data Model
 class UserData {
   final String userId;
   final String deviceId;
@@ -42,6 +43,7 @@ class UserData {
       };
 }
 
+// Screen View Data Model
 class ScreenViewData {
   final String screenId;
   final String screenPath;
@@ -66,6 +68,7 @@ class ScreenViewData {
       };
 }
 
+// Error Data Model
 class ErrorData {
   final String sessionId;
   final String deviceId;
@@ -93,6 +96,7 @@ class ErrorData {
       };
 }
 
+// Qube Analytics SDK
 class QubeAnalyticsSDK {
   static final QubeAnalyticsSDK _instance = QubeAnalyticsSDK._internal();
   factory QubeAnalyticsSDK() => _instance;
@@ -106,16 +110,12 @@ class QubeAnalyticsSDK {
   late String deviceId;
   String? lastScreenId;
 
-  late BehaviorDataService behaviorDataService;
-
   Future<void> initialize({String? userId}) async {
     sessionId = _generateUniqueId();
     deviceId = await _initializeDeviceId();
     final generatedUserId = userId ?? _generateUniqueId();
     userData = await _collectDeviceData(generatedUserId);
     print("SDK Initialized: ${jsonEncode(userData)}");
-
-    behaviorDataService = BehaviorDataService(this);
 
     FlutterError.onError = (FlutterErrorDetails details) {
       trackError(ErrorData(
@@ -134,8 +134,9 @@ class QubeAnalyticsSDK {
 
   Future<String> _initializeDeviceId() async {
     String? storedDeviceId = await _storage.read(key: _deviceIdKey);
-    if (storedDeviceId != null) return storedDeviceId;
-
+    if (storedDeviceId != null) {
+      return storedDeviceId;
+    }
     final newDeviceId = await _generateDeviceId();
     await _storage.write(key: _deviceIdKey, value: newDeviceId);
     return newDeviceId;
@@ -158,27 +159,43 @@ class QubeAnalyticsSDK {
     return deviceIdentifier.hashCode.toString();
   }
 
-  Future<Map<String, String>> _getCloudflareData() async {
+  Future<String> _getIPAddress() async {
     try {
       const url = "https://www.cloudflare.com/cdn-cgi/trace";
       final response = await http.get(Uri.parse(url));
-
       if (response.statusCode == 200) {
-        final data = response.body.split('\n');
-        final map = {
-          for (var line in data)
-            if (line.contains('=')) ...{line.split('=')[0]: line.split('=')[1]}
-        };
-        return {
-          "ip": map['ip'] ?? "Unknown",
-          "country": map['loc'] ?? "Unknown",
-          "userAgent": map['uag'] ?? "Unknown",
-        };
+        final data = _parseCloudflareResponse(response.body);
+        return data['ip'] ?? "Unknown";
       }
     } catch (e) {
-      print("Error fetching Cloudflare data: $e");
+      print("Error fetching Public IP: $e");
     }
-    return {"ip": "Unknown", "country": "Unknown", "userAgent": "Unknown"};
+    return "Unknown";
+  }
+
+  Future<Map<String, String>> _getDeviceInfo() async {
+    try {
+      const url = "https://www.cloudflare.com/cdn-cgi/trace";
+      final response = await http.get(Uri.parse(url));
+      if (response.statusCode == 200) {
+        return _parseCloudflareResponse(response.body);
+      }
+    } catch (e) {
+      print("Error fetching device info: $e");
+    }
+    return {};
+  }
+
+  Map<String, String> _parseCloudflareResponse(String response) {
+    final lines = response.split('\n');
+    final Map<String, String> data = {};
+    for (final line in lines) {
+      final parts = line.split('=');
+      if (parts.length == 2) {
+        data[parts[0].trim()] = parts[1].trim();
+      }
+    }
+    return data;
   }
 
   Future<UserData> _collectDeviceData(String userId) async {
@@ -186,9 +203,11 @@ class QubeAnalyticsSDK {
     String deviceType = "";
     int ram = 0;
     int cpuCores = 0;
+    final cloudflareData = await _getDeviceInfo();
 
-    // Fetch IP, Country, and User-Agent using Cloudflare Trace
-    final cloudflareData = await _getCloudflareData();
+    final ip = cloudflareData['ip'] ?? "Unknown";
+    final country = cloudflareData['loc'] ?? "Unknown";
+    final userAgent = cloudflareData['uag'] ?? "Unknown";
 
     if (Platform.isAndroid) {
       final androidInfo = await deviceInfo.androidInfo;
@@ -198,8 +217,8 @@ class QubeAnalyticsSDK {
     } else if (Platform.isIOS) {
       final iosInfo = await deviceInfo.iosInfo;
       deviceType = "iOS";
-      ram = 2;
-      cpuCores = 4;
+      ram = _estimateRamForIosDevice(iosInfo.utsname.machine);
+      cpuCores = _estimateCpuCoresForIosDevice(iosInfo.utsname.machine);
     }
 
     return UserData(
@@ -208,9 +227,9 @@ class QubeAnalyticsSDK {
       deviceType: deviceType,
       ram: ram,
       cpuCores: cpuCores,
-      ip: cloudflareData["ip"]!,
-      country: cloudflareData["country"]!,
-      userAgent: cloudflareData["userAgent"]!,
+      ip: ip,
+      country: country,
+      userAgent: userAgent,
     );
   }
 
@@ -223,84 +242,75 @@ class QubeAnalyticsSDK {
     print("Error: ${jsonEncode(data.toJson())}");
   }
 
-  void trackClick({required double x, required double y, String? screenId}) {
-    behaviorDataService.trackClick(
-      x: x,
-      y: y,
-      userId: userData.userId,
-      screenId: screenId ?? lastScreenId,
-    );
+  int _estimateRamForIosDevice(String machine) {
+    const deviceRam = {
+      'iPhone10,3': 3, // iPhone X
+      'iPhone10,6': 3, // iPhone X Global
+      'iPhone11,2': 4, // iPhone XS
+      'iPhone11,4': 4, // iPhone XS Max
+      'iPhone11,6': 4, // iPhone XS Max Global
+      'iPhone11,8': 3, // iPhone XR
+      'iPhone12,1': 4, // iPhone 11
+      'iPhone12,3': 4, // iPhone 11 Pro
+      'iPhone12,5': 4, // iPhone 11 Pro Max
+      'iPhone13,1': 4, // iPhone 12 Mini
+      'iPhone13,2': 4, // iPhone 12
+      'iPhone13,3': 6, // iPhone 12 Pro
+      'iPhone13,4': 6, // iPhone 12 Pro Max
+      'iPhone14,4': 4, // iPhone 13 Mini
+      'iPhone14,5': 6, // iPhone 13
+      'iPhone14,2': 6, // iPhone 13 Pro
+      'iPhone14,3': 6, // iPhone 13 Pro Max
+      'iPhone14,6': 4, // iPhone SE (3rd generation)
+      'iPhone15,2': 6, // iPhone 14
+      'iPhone15,3': 6, // iPhone 14 Plus
+      'iPhone15,4': 6, // iPhone 14 Pro
+      'iPhone15,5': 6, // iPhone 14 Pro Max
+      'iPhone16,1': 8, // iPhone 15
+      'iPhone16,2': 8, // iPhone 15 Plus
+      'iPhone16,3': 8, // iPhone 15 Pro
+      'iPhone16,4': 8, // iPhone 15 Pro Max
+      'iPhone17,1': 8, // iPhone 16 (Estimation)
+      'iPhone17,2': 8, // iPhone 16 Plus (Estimation)
+      'iPhone17,3': 8, // iPhone 16 Pro (Estimation)
+      'iPhone17,4': 8, // iPhone 16 Pro Max (Estimation)
+    };
+    return deviceRam[machine] ?? 2;
   }
 
-  void trackScroll(
-      {required double y,
-      required double screenY,
-      String? screenId,
-      double? x,
-      double? screenX}) {
-    behaviorDataService.trackScroll(
-      y: y,
-      screenY: screenY,
-      userId: userData.userId,
-      screenId: screenId ?? lastScreenId,
-      x: x,
-      screenX: screenX,
-    );
-  }
-
-  void trackCustomAction({
-    required String actionType,
-    double? x,
-    double? y,
-    double? screenY,
-    double? screenX,
-    required String userId,
-    String? screenId,
-  }) {
-    behaviorDataService.trackCustomAction(
-      actionType: actionType,
-      x: x,
-      y: y,
-      screenY: screenY,
-      screenX: screenX,
-      userId: userData.userId,
-      screenId: screenId ?? lastScreenId,
-    );
-  }
-}
-
-abstract class ScreenTracker {
-  String get screenName {
-    return runtimeType.toString();
-  }
-}
-
-class QubeNavigatorObserver extends NavigatorObserver {
-  @override
-  void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) {
-    super.didPush(route, previousRoute);
-
-    final sdk = QubeAnalyticsSDK();
-    final screenName = _extractScreenName(route);
-
-    sdk.trackScreenView(ScreenViewData(
-      screenId: screenName.hashCode.toString(),
-      screenPath: screenName,
-      screenName: screenName,
-      visitDateTime: DateTime.now(),
-      sessionId: sdk.sessionId,
-    ));
-  }
-
-  String _extractScreenName(Route<dynamic> route) {
-    try {
-      if (route.navigator?.context.widget is ScreenTracker) {
-        return (route.navigator!.context.widget as ScreenTracker).screenName;
-      }
-    } catch (e) {
-      print('Error extracting screen name: $e');
-    }
-
-    return route.settings.name ?? route.runtimeType.toString();
+  int _estimateCpuCoresForIosDevice(String machine) {
+    const deviceCores = {
+      'iPhone10,3': 6, // iPhone X
+      'iPhone10,6': 6, // iPhone X Global
+      'iPhone11,2': 6, // iPhone XS
+      'iPhone11,4': 6, // iPhone XS Max
+      'iPhone11,6': 6, // iPhone XS Max Global
+      'iPhone11,8': 6, // iPhone XR
+      'iPhone12,1': 6, // iPhone 11
+      'iPhone12,3': 6, // iPhone 11 Pro
+      'iPhone12,5': 6, // iPhone 11 Pro Max
+      'iPhone13,1': 6, // iPhone 12 Mini
+      'iPhone13,2': 6, // iPhone 12
+      'iPhone13,3': 6, // iPhone 12 Pro
+      'iPhone13,4': 6, // iPhone 12 Pro Max
+      'iPhone14,4': 6, // iPhone 13 Mini
+      'iPhone14,5': 6, // iPhone 13
+      'iPhone14,2': 6, // iPhone 13 Pro
+      'iPhone14,3': 6, // iPhone 13 Pro Max
+      'iPhone14,6': 6, // iPhone SE (3rd generation)
+      'iPhone15,2': 6, // iPhone 14
+      'iPhone15,3': 6, // iPhone 14 Plus
+      'iPhone15,4': 6, // iPhone 14 Pro
+      'iPhone15,5': 6, // iPhone 14 Pro Max
+      'iPhone16,1': 6, // iPhone 15
+      'iPhone16,2': 6, // iPhone 15 Plus
+      'iPhone16,3': 6, // iPhone 15 Pro
+      'iPhone16,4': 6, // iPhone 15 Pro Max
+      'iPhone17,1': 6, // iPhone 16 (Estimation)
+      'iPhone17,2': 6, // iPhone 16 Plus (Estimation)
+      'iPhone17,3': 6, // iPhone 16 Pro (Estimation)
+      'iPhone17,4': 6, // iPhone 16 Pro Max (Estimation)
+    };
+    return deviceCores[machine] ?? 4;
   }
 }
