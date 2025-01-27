@@ -18,6 +18,7 @@ class UserData {
   final int cpuCores;
   final String ip;
   final String country;
+  final String userAgent;
 
   UserData({
     required this.userId,
@@ -27,6 +28,7 @@ class UserData {
     required this.cpuCores,
     required this.ip,
     required this.country,
+    required this.userAgent,
   });
 
   Map<String, dynamic> toJson() => {
@@ -37,6 +39,7 @@ class UserData {
         'cpuCores': cpuCores,
         'ip': ip,
         'country': country,
+        'userAgent': userAgent,
       };
 }
 
@@ -159,37 +162,27 @@ class QubeAnalyticsSDK {
     return deviceIdentifier.hashCode.toString();
   }
 
-  Future<String> _getIPAddress() async {
+  Future<Map<String, String>> _getCloudflareData() async {
     try {
-      const url = "https://api64.ipify.org?format=json";
-      final response = await http.get(Uri.parse(url));
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        return data['ip'];
-      }
-    } catch (e) {
-      print("Error fetching Public IP: $e");
-    }
-    return "Unknown";
-  }
-
-  Future<String> _getCountry(String ipAddress) async {
-    try {
-      const apiKey = "df508899a9aa3c8b27e8cbedcb2dffb4";
-      final url =
-          "http://api.ipapi.com/$ipAddress?access_key=$apiKey&fields=country_name&output=json";
+      const url = "https://www.cloudflare.com/cdn-cgi/trace";
       final response = await http.get(Uri.parse(url));
 
       if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        return data['country_name'] ?? "Unknown";
-      } else {
-        print("Failed to fetch country: ${response.body}");
+        final data = response.body.split('\n');
+        final map = {
+          for (var line in data)
+            if (line.contains('=')) ...{line.split('=')[0]: line.split('=')[1]}
+        };
+        return {
+          "ip": map['ip'] ?? "Unknown",
+          "country": map['loc'] ?? "Unknown",
+          "userAgent": map['uag'] ?? "Unknown",
+        };
       }
     } catch (e) {
-      print("Error fetching country: $e");
+      print("Error fetching Cloudflare data: $e");
     }
-    return "Unknown";
+    return {"ip": "Unknown", "country": "Unknown", "userAgent": "Unknown"};
   }
 
   Future<UserData> _collectDeviceData(String userId) async {
@@ -197,8 +190,9 @@ class QubeAnalyticsSDK {
     String deviceType = "";
     int ram = 0;
     int cpuCores = 0;
-    final ipAddress = await _getIPAddress();
-    final country = await _getCountry(ipAddress);
+
+    // Fetch IP, Country, and User-Agent using Cloudflare Trace
+    final cloudflareData = await _getCloudflareData();
 
     if (Platform.isAndroid) {
       final androidInfo = await deviceInfo.androidInfo;
@@ -218,8 +212,9 @@ class QubeAnalyticsSDK {
       deviceType: deviceType,
       ram: ram,
       cpuCores: cpuCores,
-      ip: ipAddress,
-      country: country,
+      ip: cloudflareData["ip"]!,
+      country: cloudflareData["country"]!,
+      userAgent: cloudflareData["userAgent"]!,
     );
   }
 
@@ -230,41 +225,5 @@ class QubeAnalyticsSDK {
 
   void trackError(ErrorData data) {
     print("Error: ${jsonEncode(data.toJson())}");
-  }
-}
-
-abstract class ScreenTracker {
-  String get screenName {
-    return runtimeType.toString();
-  }
-}
-
-class QubeNavigatorObserver extends NavigatorObserver {
-  @override
-  void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) {
-    super.didPush(route, previousRoute);
-
-    final sdk = QubeAnalyticsSDK();
-    final screenName = _extractScreenName(route);
-
-    sdk.trackScreenView(ScreenViewData(
-      screenId: screenName.hashCode.toString(),
-      screenPath: screenName,
-      screenName: screenName,
-      visitDateTime: DateTime.now(),
-      sessionId: sdk.sessionId,
-    ));
-  }
-
-  String _extractScreenName(Route<dynamic> route) {
-    try {
-      if (route.navigator?.context.widget is ScreenTracker) {
-        return (route.navigator!.context.widget as ScreenTracker).screenName;
-      }
-    } catch (e) {
-      print('Error extracting screen name: $e');
-    }
-
-    return route.settings.name ?? route.runtimeType.toString();
   }
 }
