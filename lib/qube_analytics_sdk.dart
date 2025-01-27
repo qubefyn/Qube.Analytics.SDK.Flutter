@@ -314,3 +314,39 @@ class QubeAnalyticsSDK {
     return deviceCores[machine] ?? 4;
   }
 }
+
+abstract class ScreenTracker {
+  String get screenName {
+    return runtimeType.toString();
+  }
+}
+
+class QubeNavigatorObserver extends NavigatorObserver {
+  @override
+  void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    super.didPush(route, previousRoute);
+
+    final sdk = QubeAnalyticsSDK();
+    final screenName = _extractScreenName(route);
+
+    sdk.trackScreenView(ScreenViewData(
+      screenId: screenName.hashCode.toString(),
+      screenPath: screenName,
+      screenName: screenName,
+      visitDateTime: DateTime.now(),
+      sessionId: sdk.sessionId,
+    ));
+  }
+
+  String _extractScreenName(Route<dynamic> route) {
+    try {
+      if (route.navigator?.context.widget is ScreenTracker) {
+        return (route.navigator!.context.widget as ScreenTracker).screenName;
+      }
+    } catch (e) {
+      print('Error extracting screen name: $e');
+    }
+
+    return route.settings.name ?? route.runtimeType.toString();
+  }
+}
