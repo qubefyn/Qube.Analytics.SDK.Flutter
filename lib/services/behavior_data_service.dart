@@ -158,6 +158,20 @@ class BehaviorDataService {
         }
         return false;
       },
+      child: wrapWithClickTracking(child: child),
+    );
+  }
+  Widget wrapWithClickTracking({required Widget child}) {
+    return Listener(
+      onPointerDown: (PointerDownEvent event) {
+        final offset = event.position;
+        trackClick(
+          x: offset.dx,
+          y: offset.dy,
+          userId: _sdk.userData.userId,
+          screenId: _sdk.lastScreenId,
+        );
+      },
       child: child,
     );
   }
