@@ -8,6 +8,7 @@ import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
+import 'package:qube_analytics_sdk/services/behavior_data_service.dart';
 
 // User Data Model
 class UserData {
@@ -104,7 +105,7 @@ class QubeAnalyticsSDK {
 
   static const _deviceIdKey = "device_id";
   static const _storage = FlutterSecureStorage();
-
+late BehaviorDataService behaviorDataService;
   late String sessionId;
   late UserData userData;
   late String deviceId;
@@ -116,7 +117,7 @@ class QubeAnalyticsSDK {
     final generatedUserId = userId ?? _generateUniqueId();
     userData = await _collectDeviceData(generatedUserId);
     print("SDK Initialized: ${jsonEncode(userData)}");
-
+  behaviorDataService = BehaviorDataService(this);
     FlutterError.onError = (FlutterErrorDetails details) {
       trackError(ErrorData(
         sessionId: sessionId,
