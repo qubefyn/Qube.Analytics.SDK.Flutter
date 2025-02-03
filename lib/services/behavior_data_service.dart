@@ -1,8 +1,13 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:developer';
+import 'dart:io';
+import 'dart:typed_data';
+import 'dart:ui';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:qube_analytics_sdk/qube_analytics_sdk.dart';
 
 class BehaviorData {
@@ -29,20 +34,21 @@ class BehaviorData {
   });
 
   Map<String, dynamic> toJson() => {
-    'actionType': actionType,
-    'x': x,
-    'y': y,
-    'screenY': screenY,
-    'screenX': screenX,
-    'actionDateTime': actionDateTime.toIso8601String(),
-    'sessionId': sessionId,
-    'userId': userId,
-    'screenId': screenId,
-  };
+        'actionType': actionType,
+        'x': x,
+        'y': y,
+        'screenY': screenY,
+        'screenX': screenX,
+        'actionDateTime': actionDateTime.toIso8601String(),
+        'sessionId': sessionId,
+        'userId': userId,
+        'screenId': screenId,
+      };
 }
 
 class BehaviorDataService {
   final QubeAnalyticsSDK _sdk;
+  final GlobalKey repaintBoundaryKey = GlobalKey();
 
   BehaviorDataService(this._sdk);
 
@@ -124,7 +130,6 @@ class BehaviorDataService {
 
   void _trackClicks(BuildContext context) {
     final overlay = Overlay.of(context);
-    if (overlay == null) return;
 
     final listener = Listener(
       onPointerDown: (PointerDownEvent event) {
@@ -161,18 +166,43 @@ class BehaviorDataService {
       child: wrapWithClickTracking(child: child),
     );
   }
+
   Widget wrapWithClickTracking({required Widget child}) {
-    return Listener(
-      onPointerDown: (PointerDownEvent event) {
-        final offset = event.position;
-        trackClick(
-          x: offset.dx,
-          y: offset.dy,
-          userId: _sdk.userData.userId,
-          screenId: _sdk.lastScreenId,
-        );
-      },
-      child: child,
+    return RepaintBoundary(
+      key: repaintBoundaryKey,
+      child: Listener(
+        onPointerDown: (PointerDownEvent event) {
+          final offset = event.position;
+          trackClick(
+            x: offset.dx,
+            y: offset.dy,
+            userId: _sdk.userData.userId,
+            screenId: _sdk.lastScreenId,
+          );
+        },
+        child: child,
+      ),
     );
+  }
+
+  /// 🔥 **إضافة ميزة `Heatmap Capture`**
+  /// تحفظ لقطة الشاشة عند مغادرة الشاشة الحالية
+  Future<void> captureHeatmap(String screenId) async {
+    try {
+      RenderRepaintBoundary boundary = repaintBoundaryKey.currentContext!
+          .findRenderObject() as RenderRepaintBoundary;
+      var image = await boundary.toImage();
+      ByteData? byteData = await image.toByteData(format: ImageByteFormat.png);
+      Uint8List pngBytes = byteData!.buffer.asUint8List();
+
+      Directory tempDir = await getTemporaryDirectory();
+      String filePath = '${tempDir.path}/$screenId.png';
+
+      File imgFile = File(filePath);
+      await imgFile.writeAsBytes(pngBytes);
+      print("✅ Screenshot saved: $filePath");
+    } catch (e) {
+      print("❌ Error capturing heatmap: $e");
+    }
   }
 }
