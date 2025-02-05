@@ -336,7 +336,7 @@ class QubeNavigatorObserver extends NavigatorObserver {
     final sdk = QubeAnalyticsSDK();
     final screenName = _extractScreenName(route);
 
-    // تتبع الصفحة الجديدة
+    // تسجيل الشاشة الجديدة
     sdk.trackScreenView(ScreenViewData(
       screenId: screenName.hashCode.toString(),
       screenPath: screenName,
@@ -345,10 +345,10 @@ class QubeNavigatorObserver extends NavigatorObserver {
       sessionId: sdk.sessionId,
     ));
 
-    // حفظ اسم الصفحة الحالية
+    // حفظ اسم الشاشة الحالية
     _currentRouteName = route.settings.name;
 
-    // التقاط لقطة الشاشة عند الدخول للصفحة
+    // ✅ التقاط لقطة شاشة عند الدخول إلى الصفحة
     _captureScreenshot(screenName);
   }
 
@@ -356,28 +356,24 @@ class QubeNavigatorObserver extends NavigatorObserver {
   void didPop(Route<dynamic> route, Route<dynamic>? previousRoute) {
     super.didPop(route, previousRoute);
 
-    // التقاط لقطة الشاشة عند الخروج من الصفحة
+    // ✅ التقاط لقطة شاشة عند الخروج من الصفحة
     if (_currentRouteName != null) {
       _captureScreenshot(_currentRouteName!);
     }
 
-    // تحديث اسم الصفحة الحالية للصفحة السابقة
+    // تحديث اسم الشاشة الحالية بالصفحة السابقة
     _currentRouteName = previousRoute?.settings.name;
   }
 
   String _extractScreenName(Route<dynamic> route) {
-    try {
-      if (route.navigator?.context.widget is ScreenTracker) {
-        return (route.navigator!.context.widget as ScreenTracker).screenName;
-      }
-    } catch (e) {
-      debugPrint('Error extracting screen name: $e');
-    }
     return route.settings.name ?? route.runtimeType.toString();
   }
 
   Future<void> _captureScreenshot(String routeName) async {
     try {
+      await Future.delayed(const Duration(
+          milliseconds: 300)); // تأخير بسيط لضمان التقاط الشاشة بعد التحديث
+
       final boundary = _repaintBoundaryKey.currentContext?.findRenderObject()
           as RenderRepaintBoundary?;
 
@@ -389,6 +385,7 @@ class QubeNavigatorObserver extends NavigatorObserver {
         if (pngBytes != null) {
           final directory = await getApplicationDocumentsDirectory();
           final screenshotsDir = Directory('${directory.path}/screenshots');
+
           if (!screenshotsDir.existsSync()) {
             screenshotsDir.createSync(recursive: true);
           }
@@ -398,11 +395,15 @@ class QubeNavigatorObserver extends NavigatorObserver {
           final file = File(filePath);
           await file.writeAsBytes(pngBytes);
 
-          debugPrint('Screenshot saved: $filePath');
+          debugPrint('✅ Screenshot saved: $filePath');
+        } else {
+          debugPrint('❌ Failed to convert image to bytes.');
         }
+      } else {
+        debugPrint('❌ Render boundary is null. Screenshot not captured.');
       }
     } catch (e) {
-      debugPrint('Error capturing screenshot: $e');
+      debugPrint('❌ Error capturing screenshot: $e');
     }
   }
 }
