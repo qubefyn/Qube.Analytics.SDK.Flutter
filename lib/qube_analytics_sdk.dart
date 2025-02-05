@@ -374,9 +374,6 @@ class QubeNavigatorObserver extends NavigatorObserver {
 
   Future<void> _captureScreenshot(String routeName) async {
     try {
-      await Future.delayed(
-          const Duration(milliseconds: 300)); // تأخير بسيط لضمان استقرار الشاشة
-
       final boundary = repaintBoundaryKey.currentContext?.findRenderObject()
           as RenderRepaintBoundary?;
 
