@@ -105,7 +105,7 @@ class QubeAnalyticsSDK {
 
   static const _deviceIdKey = "device_id";
   static const _storage = FlutterSecureStorage();
-late BehaviorDataService behaviorDataService;
+  late BehaviorDataService behaviorDataService;
   late String sessionId;
   late UserData userData;
   late String deviceId;
@@ -117,7 +117,7 @@ late BehaviorDataService behaviorDataService;
     final generatedUserId = userId ?? _generateUniqueId();
     userData = await _collectDeviceData(generatedUserId);
     print("SDK Initialized: ${jsonEncode(userData)}");
-  behaviorDataService = BehaviorDataService(this);
+    behaviorDataService = BehaviorDataService(this);
     FlutterError.onError = (FlutterErrorDetails details) {
       trackError(ErrorData(
         sessionId: sessionId,
