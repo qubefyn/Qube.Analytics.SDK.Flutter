@@ -326,11 +326,9 @@ abstract class ScreenTracker {
 }
 
 class QubeNavigatorObserver extends NavigatorObserver {
-  final GlobalKey repaintBoundaryKey; // ✅ تمرير مفتاح `RepaintBoundary`
+  final GlobalKey repaintBoundaryKey; // ✅ تمرير المفتاح
 
   QubeNavigatorObserver(this.repaintBoundaryKey);
-
-  String? _currentRouteName;
 
   @override
   void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) {
@@ -348,25 +346,11 @@ class QubeNavigatorObserver extends NavigatorObserver {
       sessionId: sdk.sessionId,
     ));
 
-    // ✅ حفظ اسم الصفحة الحالية
-    _currentRouteName = route.settings.name;
-
-    // ✅ التقاط لقطة الشاشة عند الدخول للصفحة
+    // ✅ التقاط لقطة الشاشة عند الدخول فقط
     _captureScreenshot(screenName);
   }
 
-  @override
-  void didPop(Route<dynamic> route, Route<dynamic>? previousRoute) {
-    super.didPop(route, previousRoute);
-
-    // ✅ التقاط لقطة الشاشة عند الخروج من الصفحة
-    if (_currentRouteName != null) {
-      _captureScreenshot(_currentRouteName!);
-    }
-
-    // ✅ تحديث اسم الصفحة الحالية للصفحة السابقة
-    _currentRouteName = previousRoute?.settings.name;
-  }
+  // ❌ إزالة `didPop` بالكامل لأنه كان يلتقط لقطة عند الخروج
 
   String _extractScreenName(Route<dynamic> route) {
     return route.settings.name ?? route.runtimeType.toString();
@@ -374,6 +358,9 @@ class QubeNavigatorObserver extends NavigatorObserver {
 
   Future<void> _captureScreenshot(String routeName) async {
     try {
+      await Future.delayed(
+          const Duration(milliseconds: 300)); // ✅ تأخير بسيط لاستقرار الشاشة
+
       final boundary = repaintBoundaryKey.currentContext?.findRenderObject()
           as RenderRepaintBoundary?;
 
