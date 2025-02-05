@@ -3,11 +3,14 @@ library qube_analytics_sdk;
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:ui';
 
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
+import 'package:path_provider/path_provider.dart';
 import 'package:qube_analytics_sdk/services/behavior_data_service.dart';
 
 // User Data Model
@@ -323,6 +326,9 @@ abstract class ScreenTracker {
 }
 
 class QubeNavigatorObserver extends NavigatorObserver {
+  final GlobalKey _repaintBoundaryKey = GlobalKey();
+  String? _currentRouteName;
+
   @override
   void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) {
     super.didPush(route, previousRoute);
@@ -330,6 +336,7 @@ class QubeNavigatorObserver extends NavigatorObserver {
     final sdk = QubeAnalyticsSDK();
     final screenName = _extractScreenName(route);
 
+    // تتبع الصفحة الجديدة
     sdk.trackScreenView(ScreenViewData(
       screenId: screenName.hashCode.toString(),
       screenPath: screenName,
@@ -337,6 +344,25 @@ class QubeNavigatorObserver extends NavigatorObserver {
       visitDateTime: DateTime.now(),
       sessionId: sdk.sessionId,
     ));
+
+    // حفظ اسم الصفحة الحالية
+    _currentRouteName = route.settings.name;
+
+    // التقاط لقطة الشاشة عند الدخول للصفحة
+    _captureScreenshot(screenName);
+  }
+
+  @override
+  void didPop(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    super.didPop(route, previousRoute);
+
+    // التقاط لقطة الشاشة عند الخروج من الصفحة
+    if (_currentRouteName != null) {
+      _captureScreenshot(_currentRouteName!);
+    }
+
+    // تحديث اسم الصفحة الحالية للصفحة السابقة
+    _currentRouteName = previousRoute?.settings.name;
   }
 
   String _extractScreenName(Route<dynamic> route) {
@@ -345,9 +371,38 @@ class QubeNavigatorObserver extends NavigatorObserver {
         return (route.navigator!.context.widget as ScreenTracker).screenName;
       }
     } catch (e) {
-      print('Error extracting screen name: $e');
+      debugPrint('Error extracting screen name: $e');
     }
-
     return route.settings.name ?? route.runtimeType.toString();
+  }
+
+  Future<void> _captureScreenshot(String routeName) async {
+    try {
+      final boundary = _repaintBoundaryKey.currentContext?.findRenderObject()
+          as RenderRepaintBoundary?;
+
+      if (boundary != null) {
+        final image = await boundary.toImage(pixelRatio: 2.0);
+        final byteData = await image.toByteData(format: ImageByteFormat.png);
+        final pngBytes = byteData?.buffer.asUint8List();
+
+        if (pngBytes != null) {
+          final directory = await getApplicationDocumentsDirectory();
+          final screenshotsDir = Directory('${directory.path}/screenshots');
+          if (!screenshotsDir.existsSync()) {
+            screenshotsDir.createSync(recursive: true);
+          }
+
+          final timestamp = DateTime.now().millisecondsSinceEpoch;
+          final filePath = '${screenshotsDir.path}/$routeName-$timestamp.png';
+          final file = File(filePath);
+          await file.writeAsBytes(pngBytes);
+
+          debugPrint('Screenshot saved: $filePath');
+        }
+      }
+    } catch (e) {
+      debugPrint('Error capturing screenshot: $e');
+    }
   }
 }
