@@ -326,7 +326,10 @@ abstract class ScreenTracker {
 }
 
 class QubeNavigatorObserver extends NavigatorObserver {
-  final GlobalKey _repaintBoundaryKey = GlobalKey();
+  final GlobalKey repaintBoundaryKey; // ✅ تمرير مفتاح `RepaintBoundary`
+
+  QubeNavigatorObserver(this.repaintBoundaryKey);
+
   String? _currentRouteName;
 
   @override
@@ -336,7 +339,7 @@ class QubeNavigatorObserver extends NavigatorObserver {
     final sdk = QubeAnalyticsSDK();
     final screenName = _extractScreenName(route);
 
-    // تسجيل الشاشة الجديدة
+    // ✅ تتبع الصفحة الجديدة
     sdk.trackScreenView(ScreenViewData(
       screenId: screenName.hashCode.toString(),
       screenPath: screenName,
@@ -345,10 +348,10 @@ class QubeNavigatorObserver extends NavigatorObserver {
       sessionId: sdk.sessionId,
     ));
 
-    // حفظ اسم الشاشة الحالية
+    // ✅ حفظ اسم الصفحة الحالية
     _currentRouteName = route.settings.name;
 
-    // ✅ التقاط لقطة شاشة عند الدخول إلى الصفحة
+    // ✅ التقاط لقطة الشاشة عند الدخول للصفحة
     _captureScreenshot(screenName);
   }
 
@@ -356,12 +359,12 @@ class QubeNavigatorObserver extends NavigatorObserver {
   void didPop(Route<dynamic> route, Route<dynamic>? previousRoute) {
     super.didPop(route, previousRoute);
 
-    // ✅ التقاط لقطة شاشة عند الخروج من الصفحة
+    // ✅ التقاط لقطة الشاشة عند الخروج من الصفحة
     if (_currentRouteName != null) {
       _captureScreenshot(_currentRouteName!);
     }
 
-    // تحديث اسم الشاشة الحالية بالصفحة السابقة
+    // ✅ تحديث اسم الصفحة الحالية للصفحة السابقة
     _currentRouteName = previousRoute?.settings.name;
   }
 
@@ -371,10 +374,10 @@ class QubeNavigatorObserver extends NavigatorObserver {
 
   Future<void> _captureScreenshot(String routeName) async {
     try {
-      await Future.delayed(const Duration(
-          milliseconds: 300)); // تأخير بسيط لضمان التقاط الشاشة بعد التحديث
+      await Future.delayed(
+          const Duration(milliseconds: 300)); // تأخير بسيط لضمان استقرار الشاشة
 
-      final boundary = _repaintBoundaryKey.currentContext?.findRenderObject()
+      final boundary = repaintBoundaryKey.currentContext?.findRenderObject()
           as RenderRepaintBoundary?;
 
       if (boundary != null) {
