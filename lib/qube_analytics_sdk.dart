@@ -326,7 +326,8 @@ abstract class ScreenTracker {
 }
 
 class QubeNavigatorObserver extends NavigatorObserver {
-  final GlobalKey repaintBoundaryKey; // ✅ تمرير المفتاح
+  final GlobalKey repaintBoundaryKey; // ✅ مفتاح الـ RepaintBoundary
+  Timer? _screenshotTimer; // ✅ مؤقت لأخذ لقطة كل 5 ثوانٍ
 
   QubeNavigatorObserver(this.repaintBoundaryKey);
 
@@ -337,7 +338,6 @@ class QubeNavigatorObserver extends NavigatorObserver {
     final sdk = QubeAnalyticsSDK();
     final screenName = _extractScreenName(route);
 
-    // ✅ تتبع الصفحة الجديدة
     sdk.trackScreenView(ScreenViewData(
       screenId: screenName.hashCode.toString(),
       screenPath: screenName,
@@ -346,21 +346,38 @@ class QubeNavigatorObserver extends NavigatorObserver {
       sessionId: sdk.sessionId,
     ));
 
-    // ✅ التقاط لقطة الشاشة عند الدخول فقط
-    _captureScreenshot(screenName);
+    // ✅ بدء أخذ اللقطات بشكل متكرر
+    _startScreenshotTimer(screenName);
   }
 
-  // ❌ إزالة `didPop` بالكامل لأنه كان يلتقط لقطة عند الخروج
+  @override
+  void didPop(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    super.didPop(route, previousRoute);
+    _stopScreenshotTimer(); // ✅ إيقاف المؤقت عند الخروج من الشاشة
+  }
 
+  /// ✅ استخراج اسم الشاشة
   String _extractScreenName(Route<dynamic> route) {
     return route.settings.name ?? route.runtimeType.toString();
   }
 
+  /// ✅ بدء المؤقت لأخذ لقطة كل 5 ثوانٍ
+  void _startScreenshotTimer(String screenName) {
+    _stopScreenshotTimer(); // التأكد من عدم تشغيل مؤقت آخر
+    _screenshotTimer = Timer.periodic(const Duration(seconds: 5), (timer) {
+      _captureScreenshot(screenName);
+    });
+  }
+
+  /// ✅ إيقاف المؤقت عند الخروج من الشاشة
+  void _stopScreenshotTimer() {
+    _screenshotTimer?.cancel();
+    _screenshotTimer = null;
+  }
+
+  /// ✅ التقاط لقطة الشاشة وحفظها
   Future<void> _captureScreenshot(String routeName) async {
     try {
-      await Future.delayed(
-          const Duration(milliseconds: 300)); // ✅ تأخير بسيط لاستقرار الشاشة
-
       final boundary = repaintBoundaryKey.currentContext?.findRenderObject()
           as RenderRepaintBoundary?;
 
