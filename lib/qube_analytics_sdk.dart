@@ -36,15 +36,15 @@ class UserData {
   });
 
   Map<String, dynamic> toJson() => {
-        'userId': userId,
-        'deviceId': deviceId,
-        'deviceType': deviceType,
-        'ram': ram,
-        'cpuCores': cpuCores,
-        'ip': ip,
-        'country': country,
-        'userAgent': userAgent,
-      };
+    'userId': userId,
+    'deviceId': deviceId,
+    'deviceType': deviceType,
+    'ram': ram,
+    'cpuCores': cpuCores,
+    'ip': ip,
+    'country': country,
+    'userAgent': userAgent,
+  };
 }
 
 // Screen View Data Model
@@ -64,12 +64,12 @@ class ScreenViewData {
   });
 
   Map<String, dynamic> toJson() => {
-        'screenId': screenId,
-        'screenPath': screenPath,
-        'screenName': screenName,
-        'visitDateTime': visitDateTime.toIso8601String(),
-        'sessionId': sessionId,
-      };
+    'screenId': screenId,
+    'screenPath': screenPath,
+    'screenName': screenName,
+    'visitDateTime': visitDateTime.toIso8601String(),
+    'sessionId': sessionId,
+  };
 }
 
 // Error Data Model
@@ -91,13 +91,13 @@ class ErrorData {
   });
 
   Map<String, dynamic> toJson() => {
-        'sessionId': sessionId,
-        'deviceId': deviceId,
-        'screenId': screenId,
-        'errorMessage': errorMessage,
-        'errorStackTrace': errorStackTrace,
-        'isCustom': isCustom,
-      };
+    'sessionId': sessionId,
+    'deviceId': deviceId,
+    'screenId': screenId,
+    'errorMessage': errorMessage,
+    'errorStackTrace': errorStackTrace,
+    'isCustom': isCustom,
+  };
 }
 
 // Qube Analytics SDK
@@ -153,11 +153,11 @@ class QubeAnalyticsSDK {
     if (Platform.isAndroid) {
       final androidInfo = await deviceInfo.androidInfo;
       deviceIdentifier =
-          "${androidInfo.id}-${androidInfo.model}-${androidInfo.product}";
+      "${androidInfo.id}-${androidInfo.model}-${androidInfo.product}";
     } else if (Platform.isIOS) {
       final iosInfo = await deviceInfo.iosInfo;
       deviceIdentifier =
-          "${iosInfo.identifierForVendor}-${iosInfo.utsname.machine}-${iosInfo.systemName}";
+      "${iosInfo.identifierForVendor}-${iosInfo.utsname.machine}-${iosInfo.systemName}";
     }
 
     return deviceIdentifier.hashCode.toString();
@@ -379,7 +379,7 @@ class QubeNavigatorObserver extends NavigatorObserver {
   Future<void> _captureScreenshot(String routeName) async {
     try {
       final boundary = repaintBoundaryKey.currentContext?.findRenderObject()
-          as RenderRepaintBoundary?;
+      as RenderRepaintBoundary?;
 
       if (boundary != null) {
         final image = await boundary.toImage(pixelRatio: 2.0);
