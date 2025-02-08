@@ -1,9 +1,10 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:developer';
-import 'dart:ui';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:path_provider/path_provider.dart'; // Add this to pubspec.yaml
 import 'package:qube_analytics_sdk/qube_analytics_sdk.dart';
 
 class LayoutService {
@@ -58,14 +59,35 @@ class LayoutService {
         'height': size.height,
       });
     }
-
     renderObject.visitChildren((child) {
       _visitRenderObject(child, components);
     });
   }
 
   void _logLayoutData(Map<String, dynamic> layoutData) {
-    log("Layout Data, ${jsonEncode(layoutData)}");
+    String jsonData = jsonEncode(layoutData);
+
+    // 1. Use debugPrint with wrapWidth to avoid truncation
+    debugPrint("Layout Data: $jsonData", wrapWidth: 1024);
+
+    // 2. Chunk large logs to avoid truncation
+    const int chunkSize = 1000;
+    for (int i = 0; i < jsonData.length; i += chunkSize) {
+      print(jsonData.substring(i, i + chunkSize > jsonData.length ? jsonData.length : i + chunkSize));
+    }
+
+    // 3. Log to a file for persistence
+    _saveLogToFile(jsonData);
+  }
+
+  Future<void> _saveLogToFile(String logData) async {
+    try {
+      final directory = await getApplicationDocumentsDirectory();
+      final file = File('${directory.path}/layout_log.txt');
+      await file.writeAsString("$logData\n", mode: FileMode.append);
+    } catch (e) {
+      debugPrint("Error writing log to file: $e");
+    }
   }
 
   void stopLayoutAnalysis() {
