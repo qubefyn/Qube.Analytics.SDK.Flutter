@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:developer';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
@@ -64,7 +65,7 @@ class LayoutService {
   }
 
   void _logLayoutData(Map<String, dynamic> layoutData) {
-    print("Layout Data: ${jsonEncode(layoutData)}");
+    log("Layout Data, ${jsonEncode(layoutData)}");
   }
 
   void stopLayoutAnalysis() {
