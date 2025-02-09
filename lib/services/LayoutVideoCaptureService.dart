@@ -57,10 +57,24 @@ class LayoutVideoCaptureService {
       }
 
       final Uint8List pngBytes = byteData.buffer.asUint8List();
-      final directory = await getApplicationDocumentsDirectory();
-      final filePath = '${directory.path}/frame_${_frameCount}.png'; // Updated path
+
+      // Get the external storage directory (next to Downloads, Pictures, etc.)
+      final directory = await getExternalStorageDirectory();
+      if (directory == null) {
+        debugPrint("Error: External storage directory not found.");
+        return;
+      }
+
+      // Create a custom folder (e.g., QubeFrames)
+      final folderPath = '${directory.path}/QubeFrames';
+      final folder = Directory(folderPath);
+      if (!folder.existsSync()) {
+        folder.createSync(recursive: true);
+      }
+
+      // Save the frame in the custom folder
+      final filePath = '$folderPath/frame_${_frameCount}.png';
       final file = File(filePath);
-      await file.parent.create(recursive: true);
       await file.writeAsBytes(pngBytes);
 
       debugPrint("Screenshot saved: $filePath");

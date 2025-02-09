@@ -59,19 +59,30 @@ class LayoutService {
   /// Captures a screenshot of the current screen.
   Future<void> _captureScreenshot(String screenName, RenderObject renderObject) async {
     try {
-      if (renderObject is RenderRepaintBoundary) { // Ensure it's a RenderRepaintBoundary
+      if (renderObject is RenderRepaintBoundary) {
         final ui.Image image = await renderObject.toImage(pixelRatio: 3.0);
         final ByteData? byteData = await image.toByteData(format: ui.ImageByteFormat.png);
         if (byteData == null) return;
 
         final Uint8List pngBytes = byteData.buffer.asUint8List();
 
-        // Save the screenshot to a file
-        final directory = await getApplicationDocumentsDirectory();
-        final filePath = '${directory.path}/screenshot_${DateTime.now().millisecondsSinceEpoch}.png'; // Updated path
-        final file = File(filePath);
+        // Get the external storage directory (next to Downloads, Pictures, etc.)
+        final directory = await getExternalStorageDirectory();
+        if (directory == null) {
+          debugPrint("Error: External storage directory not found.");
+          return;
+        }
 
-        await file.parent.create(recursive: true);
+        // Create a custom folder (e.g., QubeScreenshots)
+        final folderPath = '${directory.path}/QubeScreenshots';
+        final folder = Directory(folderPath);
+        if (!folder.existsSync()) {
+          folder.createSync(recursive: true);
+        }
+
+        // Save the screenshot in the custom folder
+        final filePath = '$folderPath/screenshot_${DateTime.now().millisecondsSinceEpoch}.png';
+        final file = File(filePath);
         await file.writeAsBytes(pngBytes);
 
         debugPrint("Screenshot saved: $filePath");
@@ -143,8 +154,22 @@ class LayoutService {
   /// Saves the log data to a file for persistence.
   Future<void> _saveLogToFile(String logData) async {
     try {
-      final directory = await getApplicationDocumentsDirectory();
-      final file = File('${directory.path}/layout_log.txt'); // Updated path
+      // Get the external storage directory (next to Downloads, Pictures, etc.)
+      final directory = await getExternalStorageDirectory();
+      if (directory == null) {
+        debugPrint("Error: External storage directory not found.");
+        return;
+      }
+
+      // Create a custom folder (e.g., QubeLogs)
+      final folderPath = '${directory.path}/QubeLogs';
+      final folder = Directory(folderPath);
+      if (!folder.existsSync()) {
+        folder.createSync(recursive: true);
+      }
+
+      // Save the log file in the custom folder
+      final file = File('$folderPath/layout_log.txt');
       await file.writeAsString("$logData\n", mode: FileMode.append);
     } catch (e) {
       debugPrint("Error writing log to file: $e");
