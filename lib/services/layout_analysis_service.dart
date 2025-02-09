@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:developer';
 import 'dart:io';
+import 'dart:typed_data';
 import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -60,6 +61,9 @@ class LayoutService {
   Future<void> _captureScreenshot(String screenName, RenderObject renderObject) async {
     try {
       if (renderObject is RenderRepaintBoundary) {
+        // Mask text field content before capturing the screenshot
+        _maskTextFieldContent(renderObject);
+
         final ui.Image image = await renderObject.toImage(pixelRatio: 3.0);
         final ByteData? byteData = await image.toByteData(format: ui.ImageByteFormat.png);
         if (byteData == null) return;
@@ -86,12 +90,39 @@ class LayoutService {
         await file.writeAsBytes(pngBytes);
 
         debugPrint("Screenshot saved: $filePath");
+
+        // Restore text field content after capturing the screenshot
+        _restoreTextFieldContent(renderObject);
       } else {
         debugPrint("RenderObject is not a RenderRepaintBoundary, cannot capture screenshot.");
       }
     } catch (e) {
       debugPrint("Error capturing screenshot: $e");
     }
+  }
+
+  /// Masks the content of text fields in the render tree.
+  void _maskTextFieldContent(RenderObject renderObject) {
+    if (renderObject is RenderEditable && hideTextFieldContent) {
+      // Replace the text content with a placeholder (e.g., "*****")
+      renderObject.text = TextSpan(
+        text: '*****',
+        style: renderObject.text!.style,
+      );
+    }
+    renderObject.visitChildren(_maskTextFieldContent);
+  }
+
+  /// Restores the original content of text fields in the render tree.
+  void _restoreTextFieldContent(RenderObject renderObject) {
+    if (renderObject is RenderEditable && hideTextFieldContent) {
+      // Restore the original text content
+      renderObject.text = TextSpan(
+        text: renderObject.text!.toPlainText(),
+        style: renderObject.text!.style,
+      );
+    }
+    renderObject.visitChildren(_restoreTextFieldContent);
   }
 
   /// Extracts layout components and detects TextFields.
@@ -145,7 +176,7 @@ class LayoutService {
     String jsonData = jsonEncode(layoutData);
 
     // 1. Log to the console
-    // debugPrint("Layout Data: $jsonData", wrapWidth: 1024);
+    debugPrint("Layout Data: $jsonData", wrapWidth: 1024);
 
     // 2. Save the log to a file
     _saveLogToFile(jsonData);
