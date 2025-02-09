@@ -354,7 +354,7 @@ class QubeNavigatorObserver extends NavigatorObserver {
     ));
     _sdk.layoutService.startLayoutAnalysis(screenName);
     // ✅ بدء أخذ اللقطات بشكل متكرر
-    _startScreenshotTimer(screenName);
+    // _startScreenshotTimer(screenName);
   }
 
   @override

@@ -68,7 +68,7 @@ class LayoutService {
 
         // Save the screenshot to a file
         final directory = await getApplicationDocumentsDirectory();
-        final filePath = '${directory.path}/screenshot_${DateTime.now().millisecondsSinceEpoch}.png'; // Changed path
+        final filePath = '${directory.path}/screenshot_${DateTime.now().millisecondsSinceEpoch}.png'; // Updated path
         final file = File(filePath);
 
         await file.parent.create(recursive: true);
@@ -144,7 +144,7 @@ class LayoutService {
   Future<void> _saveLogToFile(String logData) async {
     try {
       final directory = await getApplicationDocumentsDirectory();
-      final file = File('${directory.path}/layout_log.txt'); // Changed path
+      final file = File('${directory.path}/layout_log.txt'); // Updated path
       await file.writeAsString("$logData\n", mode: FileMode.append);
     } catch (e) {
       debugPrint("Error writing log to file: $e");
