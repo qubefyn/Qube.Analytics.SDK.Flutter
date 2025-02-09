@@ -382,6 +382,14 @@ class QubeNavigatorObserver extends NavigatorObserver {
           as RenderRepaintBoundary?;
 
       if (boundary != null) {
+        final BuildContext? context = repaintBoundaryKey.currentContext;
+
+        // ✅ إخفاء TextFields مؤقتًا
+        if (context != null) {
+          _replaceTextFieldsWithEmpty(context);
+        }
+
+        // ✅ التقاط لقطة الشاشة
         final image = await boundary.toImage(pixelRatio: 2.0);
         final byteData = await image.toByteData(format: ImageByteFormat.png);
         final pngBytes = byteData?.buffer.asUint8List();
@@ -400,8 +408,11 @@ class QubeNavigatorObserver extends NavigatorObserver {
           await file.writeAsBytes(pngBytes);
 
           debugPrint('✅ Screenshot saved: $filePath');
-        } else {
-          debugPrint('❌ Failed to convert image to bytes.');
+        }
+
+        // ✅ استعادة TextFields إلى حالتها الأصلية
+        if (context != null) {
+          _restoreTextFields(context);
         }
       } else {
         debugPrint('❌ Render boundary is null. Screenshot not captured.');
@@ -409,5 +420,45 @@ class QubeNavigatorObserver extends NavigatorObserver {
     } catch (e) {
       debugPrint('❌ Error capturing screenshot: $e');
     }
+  }
+
+  /// ✅ استبدال محتوى TextFields بمحتوى فارغ
+  void _replaceTextFieldsWithEmpty(BuildContext context) {
+    context.visitChildElements((element) {
+      if (element.widget is TextField) {
+        final StatefulElement parent = element as StatefulElement;
+        final state = parent.state as dynamic;
+
+        if (state.mounted) {
+          state.setState(() {
+            state.widget = const TextField(
+              enabled: false,
+              decoration: InputDecoration(
+                hintText: '', // إظهار TextField فارغ
+              ),
+            );
+          });
+        }
+      }
+      _replaceTextFieldsWithEmpty(element); // استكشاف العناصر الداخلية
+    });
+  }
+
+  /// ✅ استعادة محتوى TextFields الأصلي
+  void _restoreTextFields(BuildContext context) {
+    context.visitChildElements((element) {
+      if (element.widget is TextField) {
+        final StatefulElement parent = element as StatefulElement;
+        final state = parent.state as dynamic;
+
+        if (state.mounted) {
+          state.setState(() {
+            // استعادة الحقل النصي الأصلي
+            state.widget = const TextField();
+          });
+        }
+      }
+      _restoreTextFields(element); // استكشاف العناصر الداخلية
+    });
   }
 }
