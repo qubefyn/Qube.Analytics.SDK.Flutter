@@ -15,7 +15,7 @@ class LayoutService {
   Timer? _layoutTimer;
 
   // Static boolean to control text field content visibility
-  static bool hideTextFieldContent = false;
+  static bool hideTextFieldContent = true;
 
   LayoutService(this._sdk);
 
