@@ -58,7 +58,7 @@ class LayoutVideoCaptureService {
 
       final Uint8List pngBytes = byteData.buffer.asUint8List();
       final directory = await getApplicationDocumentsDirectory();
-      final filePath = '${directory.path}/$screenName/frame_${_frameCount}.png';
+      final filePath = '${directory.path}/frame_${_frameCount}.png'; // Changed path
       final file = File(filePath);
       await file.parent.create(recursive: true);
       await file.writeAsBytes(pngBytes);
