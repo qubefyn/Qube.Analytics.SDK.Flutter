@@ -11,7 +11,9 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
+import 'package:qube_analytics_sdk/services/LayoutVideoCaptureService.dart';
 import 'package:qube_analytics_sdk/services/behavior_data_service.dart';
+import 'package:qube_analytics_sdk/services/layout_analysis_service.dart';
 
 // User Data Model
 class UserData {
@@ -109,11 +111,15 @@ class QubeAnalyticsSDK {
   static const _deviceIdKey = "device_id";
   static const _storage = FlutterSecureStorage();
   late BehaviorDataService behaviorDataService;
+  late LayoutVideoCaptureService videoCaptureService;
+
   late String sessionId;
   late UserData userData;
   late String deviceId;
   String? lastScreenId;
+  late LayoutService layoutService;
 
+  final GlobalKey repaintBoundaryKey = GlobalKey();
   Future<void> initialize({String? userId}) async {
     sessionId = _generateUniqueId();
     deviceId = await _initializeDeviceId();
@@ -121,6 +127,8 @@ class QubeAnalyticsSDK {
     userData = await _collectDeviceData(generatedUserId);
     print("SDK Initialized: ${jsonEncode(userData)}");
     behaviorDataService = BehaviorDataService(this);
+    layoutService = LayoutService(this);
+    videoCaptureService = LayoutVideoCaptureService(this);
     FlutterError.onError = (FlutterErrorDetails details) {
       trackError(ErrorData(
         sessionId: sessionId,
@@ -328,8 +336,8 @@ abstract class ScreenTracker {
 class QubeNavigatorObserver extends NavigatorObserver {
   final GlobalKey repaintBoundaryKey; // ✅ مفتاح الـ RepaintBoundary
   Timer? _screenshotTimer; // ✅ مؤقت لأخذ لقطة كل 5 ثوانٍ
-
-  QubeNavigatorObserver(this.repaintBoundaryKey);
+  final QubeAnalyticsSDK _sdk;
+  QubeNavigatorObserver(this.repaintBoundaryKey, this._sdk);
 
   @override
   void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) {
@@ -345,14 +353,15 @@ class QubeNavigatorObserver extends NavigatorObserver {
       visitDateTime: DateTime.now(),
       sessionId: sdk.sessionId,
     ));
-
+    _sdk.layoutService.startLayoutAnalysis(screenName);
     // ✅ بدء أخذ اللقطات بشكل متكرر
-    _startScreenshotTimer(screenName);
+    // _startScreenshotTimer(screenName);
   }
 
   @override
   void didPop(Route<dynamic> route, Route<dynamic>? previousRoute) {
     super.didPop(route, previousRoute);
+    _sdk.layoutService.stopLayoutAnalysis();
     _stopScreenshotTimer(); // ✅ إيقاف المؤقت عند الخروج من الشاشة
   }
 
@@ -382,20 +391,6 @@ class QubeNavigatorObserver extends NavigatorObserver {
           as RenderRepaintBoundary?;
 
       if (boundary != null) {
-        // ✅ إخفاء TextField مؤقتًا
-        final context = repaintBoundaryKey.currentContext;
-        if (context != null) {
-          final widgets = context.findAncestorStateOfType<State>()?.widget;
-          if (widgets != null) {
-            context.visitChildElements((element) {
-              if (element.widget is TextField) {
-                element.markNeedsBuild(); // تحديث
-              }
-            });
-          }
-        }
-
-        // ✅ التقاط الصورة
         final image = await boundary.toImage(pixelRatio: 2.0);
         final byteData = await image.toByteData(format: ImageByteFormat.png);
         final pngBytes = byteData?.buffer.asUint8List();
@@ -422,16 +417,6 @@ class QubeNavigatorObserver extends NavigatorObserver {
       }
     } catch (e) {
       debugPrint('❌ Error capturing screenshot: $e');
-    } finally {
-      // ✅ إعادة TextField إلى حالته الأصلية
-      final context = repaintBoundaryKey.currentContext;
-      if (context != null) {
-        context.visitChildElements((element) {
-          if (element.widget is TextField) {
-            element.markNeedsBuild();
-          }
-        });
-      }
     }
   }
 }
