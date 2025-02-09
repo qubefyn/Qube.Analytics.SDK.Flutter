@@ -1,76 +1,71 @@
 import 'dart:async';
-import 'dart:convert';
-import 'dart:developer';
 import 'dart:io';
+import 'dart:ui' as ui;
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:qube_analytics_sdk/qube_analytics_sdk.dart';
 
 class LayoutVideoCaptureService {
   final QubeAnalyticsSDK _sdk;
   Timer? _captureTimer;
-  List<Map<String, dynamic>> _userActions = [];
   bool _isCapturing = false;
+  int _frameCount = 0;
 
   LayoutVideoCaptureService(this._sdk);
 
-  /// Starts capturing user actions on a specific screen.
+  /// Starts capturing screenshots at regular intervals.
   void startCapture(String screenName) {
     if (_isCapturing) return; // Avoid multiple captures
     _isCapturing = true;
-    _userActions.clear(); // Clear previous actions
-    _captureTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      _captureUserActions(screenName);
+    _frameCount = 0;
+
+    // Capture a screenshot every second (adjust interval as needed)
+    _captureTimer = Timer.periodic(const Duration(seconds: 1), (timer) async {
+      await _captureScreenshot(screenName);
     });
   }
 
-  /// Stops capturing user actions.
+  /// Stops capturing screenshots.
   void stopCapture() {
     if (!_isCapturing) return; // Avoid stopping if not capturing
     _isCapturing = false;
     _captureTimer?.cancel();
     _captureTimer = null;
-    _logUserActions();
   }
 
-  /// Captures user actions (clicks, scrolls, etc.).
-  void _captureUserActions(String screenName) {
-    final action = {
-      'sessionId': _sdk.sessionId,
-      'screenName': screenName,
-      'actionType': 'userAction', // Replace with actual action type
-      'timestamp': DateTime.now().toIso8601String(),
-      'data': {
-        'x': 100, // Example: Replace with actual coordinates
-        'y': 200,
-      },
-    };
-    _userActions.add(action);
-  }
+  /// Captures a screenshot of the current screen.
+  Future<void> _captureScreenshot(String screenName) async {
+    final context = _sdk.repaintBoundaryKey.currentContext;
+    if (context == null) return;
 
-  /// Logs the captured user actions.
-  void _logUserActions() {
-    final logData = {
-      'sessionId': _sdk.sessionId,
-      'actions': _userActions,
-    };
-    String jsonData = jsonEncode(logData);
+    final renderObject = context.findRenderObject();
+    if (renderObject is RenderRepaintBoundary) {
+      try {
+        // Capture the image as a bitmap
+        final ui.Image image = await renderObject.toImage();
+        final ByteData? byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+        final Uint8List pngBytes = byteData!.buffer.asUint8List();
 
-    // 1. Log to the console
-    debugPrint("User Actions: $jsonData", wrapWidth: 1024);
+        // Save the screenshot to a file
+        final directory = await getApplicationDocumentsDirectory();
+        final filePath = '${directory.path}/$screenName/frame_${_frameCount}.png';
+        final file = File(filePath);
 
-    // 2. Save the log to a file
-    _saveLogToFile(jsonData);
-  }
+        // Ensure the directory exists
+        await file.parent.create(recursive: true);
 
-  /// Saves the log data to a file for persistence.
-  Future<void> _saveLogToFile(String logData) async {
-    try {
-      final directory = await getApplicationDocumentsDirectory();
-      final file = File('${directory.path}/user_actions_log.txt');
-      await file.writeAsString("$logData\n", mode: FileMode.append);
-    } catch (e) {
-      debugPrint("Error writing log to file: $e");
+        // Write the image to the file
+        await file.writeAsBytes(pngBytes);
+
+        // Log the file path (optional)
+        debugPrint("Screenshot saved: $filePath");
+
+        _frameCount++;
+      } catch (e) {
+        debugPrint("Error capturing screenshot: $e");
+      }
     }
   }
 }
