@@ -133,7 +133,7 @@ class LayoutService {
     String jsonData = jsonEncode(layoutData);
 
     // 1. Log to the console
-    debugPrint("Layout Data: $jsonData", wrapWidth: 1024);
+    // debugPrint("Layout Data: $jsonData", wrapWidth: 1024);
 
     // 2. Save the log to a file
     _saveLogToFile(jsonData);
