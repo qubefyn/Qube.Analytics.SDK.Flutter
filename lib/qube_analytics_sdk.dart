@@ -382,14 +382,20 @@ class QubeNavigatorObserver extends NavigatorObserver {
           as RenderRepaintBoundary?;
 
       if (boundary != null) {
-        final BuildContext? context = repaintBoundaryKey.currentContext;
-
-        // ✅ إخفاء TextFields مؤقتًا
+        // ✅ إخفاء TextField مؤقتًا
+        final context = repaintBoundaryKey.currentContext;
         if (context != null) {
-          _replaceTextFieldsWithEmpty(context);
+          final widgets = context.findAncestorStateOfType<State>()?.widget;
+          if (widgets != null) {
+            context.visitChildElements((element) {
+              if (element.widget is TextField) {
+                element.markNeedsBuild(); // تحديث
+              }
+            });
+          }
         }
 
-        // ✅ التقاط لقطة الشاشة
+        // ✅ التقاط الصورة
         final image = await boundary.toImage(pixelRatio: 2.0);
         final byteData = await image.toByteData(format: ImageByteFormat.png);
         final pngBytes = byteData?.buffer.asUint8List();
@@ -408,57 +414,24 @@ class QubeNavigatorObserver extends NavigatorObserver {
           await file.writeAsBytes(pngBytes);
 
           debugPrint('✅ Screenshot saved: $filePath');
-        }
-
-        // ✅ استعادة TextFields إلى حالتها الأصلية
-        if (context != null) {
-          _restoreTextFields(context);
+        } else {
+          debugPrint('❌ Failed to convert image to bytes.');
         }
       } else {
         debugPrint('❌ Render boundary is null. Screenshot not captured.');
       }
     } catch (e) {
       debugPrint('❌ Error capturing screenshot: $e');
+    } finally {
+      // ✅ إعادة TextField إلى حالته الأصلية
+      final context = repaintBoundaryKey.currentContext;
+      if (context != null) {
+        context.visitChildElements((element) {
+          if (element.widget is TextField) {
+            element.markNeedsBuild();
+          }
+        });
+      }
     }
-  }
-
-  /// ✅ استبدال محتوى TextFields بمحتوى فارغ
-  void _replaceTextFieldsWithEmpty(BuildContext context) {
-    context.visitChildElements((element) {
-      if (element.widget is TextField) {
-        final StatefulElement parent = element as StatefulElement;
-        final state = parent.state as dynamic;
-
-        if (state.mounted) {
-          state.setState(() {
-            state.widget = const TextField(
-              enabled: false,
-              decoration: InputDecoration(
-                hintText: '', // إظهار TextField فارغ
-              ),
-            );
-          });
-        }
-      }
-      _replaceTextFieldsWithEmpty(element); // استكشاف العناصر الداخلية
-    });
-  }
-
-  /// ✅ استعادة محتوى TextFields الأصلي
-  void _restoreTextFields(BuildContext context) {
-    context.visitChildElements((element) {
-      if (element.widget is TextField) {
-        final StatefulElement parent = element as StatefulElement;
-        final state = parent.state as dynamic;
-
-        if (state.mounted) {
-          state.setState(() {
-            // استعادة الحقل النصي الأصلي
-            state.widget = const TextField();
-          });
-        }
-      }
-      _restoreTextFields(element); // استكشاف العناصر الداخلية
-    });
   }
 }
