@@ -11,6 +11,7 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
+import 'package:qube_analytics_sdk/services/LayoutVideoCaptureService.dart';
 import 'package:qube_analytics_sdk/services/behavior_data_service.dart';
 import 'package:qube_analytics_sdk/services/layout_analysis_service.dart';
 
@@ -110,6 +111,8 @@ class QubeAnalyticsSDK {
   static const _deviceIdKey = "device_id";
   static const _storage = FlutterSecureStorage();
   late BehaviorDataService behaviorDataService;
+  late LayoutVideoCaptureService videoCaptureService;
+
   late String sessionId;
   late UserData userData;
   late String deviceId;
@@ -124,7 +127,7 @@ class QubeAnalyticsSDK {
     userData = await _collectDeviceData(generatedUserId);
     print("SDK Initialized: ${jsonEncode(userData)}");
     behaviorDataService = BehaviorDataService(this);
-    layoutService = LayoutService(this);
+    layoutService = LayoutService(this);   videoCaptureService = LayoutVideoCaptureService(this);
     FlutterError.onError = (FlutterErrorDetails details) {
       trackError(ErrorData(
         sessionId: sessionId,
