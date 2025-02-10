@@ -57,7 +57,6 @@ class LayoutService {
   }
 
   /// Masks the content of text fields temporarily before taking a screenshot.
-  /// Masks the content of text fields temporarily before taking a screenshot.
   void _maskTextFieldContent(
       RenderObject renderObject, Map<RenderEditable, String> originalTexts) {
     if (renderObject is RenderEditable && hideTextFieldContent) {
@@ -69,9 +68,6 @@ class LayoutService {
         text: '*******', // إخفاء المحتوى أثناء اللقطة فقط
         style: renderObject.text!.style,
       );
-
-      // إعادة رسم الواجهة لضمان تطبيق التغيير
-      renderObject.markNeedsPaint();
     }
 
     renderObject.visitChildren((child) {
@@ -89,9 +85,6 @@ class LayoutService {
           text: originalTexts[renderObject]!, // استعادة المحتوى
           style: renderObject.text!.style,
         );
-
-        // إعادة رسم الواجهة لضمان استعادة التغيير
-        renderObject.markNeedsPaint();
       }
     }
 
@@ -111,10 +104,7 @@ class LayoutService {
         // إخفاء النصوص قبل اللقطة
         _maskTextFieldContent(renderObject, originalTexts);
 
-        // تأخير بسيط جدًا حتى يتم إخفاء النصوص بشكل أكيد
-        await Future.delayed(const Duration(milliseconds: 100));
-
-        // التقاط الصورة بعد التأكد من إخفاء النصوص
+        // التقاط الصورة
         final ui.Image image = await renderObject.toImage(pixelRatio: 3.0);
         final ByteData? byteData =
             await image.toByteData(format: ui.ImageByteFormat.png);
