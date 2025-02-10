@@ -3,7 +3,7 @@ library qube_analytics_sdk;
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'dart:ui';
+import 'dart:ui' as ui;
 
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/material.dart';
@@ -334,65 +334,64 @@ abstract class ScreenTracker {
 }
 
 class QubeNavigatorObserver extends NavigatorObserver {
-  final GlobalKey repaintBoundaryKey; // ✅ مفتاح الـ RepaintBoundary
-  Timer? _screenshotTimer; // ✅ مؤقت لأخذ لقطة كل 5 ثوانٍ
-  final QubeAnalyticsSDK _sdk;
-  QubeNavigatorObserver(this.repaintBoundaryKey, this._sdk);
+  final GlobalKey repaintBoundaryKey;
+  Timer? _screenshotTimer;
+
+  QubeNavigatorObserver(this.repaintBoundaryKey);
 
   @override
   void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) {
     super.didPush(route, previousRoute);
-
-    final sdk = QubeAnalyticsSDK();
     final screenName = _extractScreenName(route);
 
-    sdk.trackScreenView(ScreenViewData(
-      screenId: screenName.hashCode.toString(),
-      screenPath: screenName,
-      screenName: screenName,
-      visitDateTime: DateTime.now(),
-      sessionId: sdk.sessionId,
-    ));
-    _sdk.layoutService.startLayoutAnalysis(screenName);
-    // ✅ بدء أخذ اللقطات بشكل متكرر
-    // _startScreenshotTimer(screenName);
+    _startLayoutAnalysis(screenName);
   }
 
   @override
   void didPop(Route<dynamic> route, Route<dynamic>? previousRoute) {
     super.didPop(route, previousRoute);
-    _sdk.layoutService.stopLayoutAnalysis();
-    _stopScreenshotTimer(); // ✅ إيقاف المؤقت عند الخروج من الشاشة
+    final screenName = previousRoute != null
+        ? _extractScreenName(previousRoute)
+        : 'Unknown Screen';
+    _startLayoutAnalysis(screenName);
   }
 
-  /// ✅ استخراج اسم الشاشة
+  @override
+  void didReplace({Route<dynamic>? newRoute, Route<dynamic>? oldRoute}) {
+    super.didReplace(newRoute: newRoute, oldRoute: oldRoute);
+    final screenName =
+        newRoute != null ? _extractScreenName(newRoute) : 'Unknown Screen';
+    _startLayoutAnalysis(screenName);
+  }
+
+  /// استخراج اسم الصفحة من الـ Route
   String _extractScreenName(Route<dynamic> route) {
     return route.settings.name ?? route.runtimeType.toString();
   }
 
-  /// ✅ بدء المؤقت لأخذ لقطة كل 5 ثوانٍ
-  void _startScreenshotTimer(String screenName) {
+  /// بدء تحليل اللاي أوت
+  void _startLayoutAnalysis(String screenName) {
     _stopScreenshotTimer(); // التأكد من عدم تشغيل مؤقت آخر
     _screenshotTimer = Timer.periodic(const Duration(seconds: 5), (timer) {
       _captureScreenshot(screenName);
     });
   }
 
-  /// ✅ إيقاف المؤقت عند الخروج من الشاشة
+  /// إيقاف المؤقت
   void _stopScreenshotTimer() {
     _screenshotTimer?.cancel();
     _screenshotTimer = null;
   }
 
-  /// ✅ التقاط لقطة الشاشة وحفظها
-  Future<void> _captureScreenshot(String routeName) async {
+  /// التقاط لقطة الشاشة
+  Future<void> _captureScreenshot(String screenName) async {
     try {
       final boundary = repaintBoundaryKey.currentContext?.findRenderObject()
           as RenderRepaintBoundary?;
 
       if (boundary != null) {
         final image = await boundary.toImage(pixelRatio: 2.0);
-        final byteData = await image.toByteData(format: ImageByteFormat.png);
+        final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
         final pngBytes = byteData?.buffer.asUint8List();
 
         if (pngBytes != null) {
@@ -404,7 +403,7 @@ class QubeNavigatorObserver extends NavigatorObserver {
           }
 
           final timestamp = DateTime.now().millisecondsSinceEpoch;
-          final filePath = '${screenshotsDir.path}/$routeName-$timestamp.png';
+          final filePath = '${screenshotsDir.path}/$screenName-$timestamp.png';
           final file = File(filePath);
           await file.writeAsBytes(pngBytes);
 

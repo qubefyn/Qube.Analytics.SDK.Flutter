@@ -2,10 +2,9 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:developer';
 import 'dart:io';
-import 'dart:typed_data';
 import 'dart:ui' as ui;
+
 import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:qube_analytics_sdk/qube_analytics_sdk.dart';
@@ -58,14 +57,16 @@ class LayoutService {
   }
 
   /// Captures a screenshot of the current screen.
-  Future<void> _captureScreenshot(String screenName, RenderObject renderObject) async {
+  Future<void> _captureScreenshot(
+      String screenName, RenderObject renderObject) async {
     try {
       if (renderObject is RenderRepaintBoundary) {
         // Mask text field content before capturing the screenshot
         _maskTextFieldContent(renderObject);
 
         final ui.Image image = await renderObject.toImage(pixelRatio: 3.0);
-        final ByteData? byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+        final ByteData? byteData =
+            await image.toByteData(format: ui.ImageByteFormat.png);
         if (byteData == null) return;
 
         final Uint8List pngBytes = byteData.buffer.asUint8List();
@@ -85,7 +86,8 @@ class LayoutService {
         }
 
         // Save the screenshot in the custom folder
-        final filePath = '$folderPath/screenshot_${DateTime.now().millisecondsSinceEpoch}.png';
+        final filePath =
+            '$folderPath/screenshot_${DateTime.now().millisecondsSinceEpoch}.png';
         final file = File(filePath);
         await file.writeAsBytes(pngBytes);
 
@@ -94,7 +96,8 @@ class LayoutService {
         // Restore text field content after capturing the screenshot
         _restoreTextFieldContent(renderObject);
       } else {
-        debugPrint("RenderObject is not a RenderRepaintBoundary, cannot capture screenshot.");
+        debugPrint(
+            "RenderObject is not a RenderRepaintBoundary, cannot capture screenshot.");
       }
     } catch (e) {
       debugPrint("Error capturing screenshot: $e");
@@ -106,7 +109,7 @@ class LayoutService {
     if (renderObject is RenderEditable && hideTextFieldContent) {
       // Replace the text content with a placeholder (e.g., "*****")
       renderObject.text = TextSpan(
-        text: '*****',
+        text: '',
         style: renderObject.text!.style,
       );
     }
@@ -133,7 +136,8 @@ class LayoutService {
   }
 
   /// Visits each RenderObject to extract its properties.
-  void _visitRenderObject(RenderObject renderObject, List<Map<String, dynamic>> components) {
+  void _visitRenderObject(
+      RenderObject renderObject, List<Map<String, dynamic>> components) {
     if (renderObject is RenderBox) {
       final offset = renderObject.localToGlobal(Offset.zero);
       final size = renderObject.size;
@@ -148,7 +152,9 @@ class LayoutService {
         'width': size.width,
         'height': size.height,
         'isTextField': isTextField,
-        'content': isTextField && !hideTextFieldContent ? _getTextFieldContent(renderObject) : 'Hidden',
+        'content': isTextField && !hideTextFieldContent
+            ? _getTextFieldContent(renderObject)
+            : 'Hidden',
       });
     }
     renderObject.visitChildren((child) {
