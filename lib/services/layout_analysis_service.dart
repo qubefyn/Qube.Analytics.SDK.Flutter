@@ -13,39 +13,46 @@ class LayoutService {
   final QubeAnalyticsSDK _sdk;
   Timer? _layoutTimer;
 
-  // Static boolean to control text field content visibility
+  // التحكم في إخفاء محتوى TextField
   static bool hideTextFieldContent = true;
 
   LayoutService(this._sdk);
 
-  /// Starts the layout analysis for a specific screen.
+  /// ✅ بدء تحليل الواجهة لكل صفحة
   void startLayoutAnalysis(String screenName) {
-    _stopLayoutTimer(); // Ensure no previous timer is running
-    log("Starting layout analysis for screen: $screenName");
+    _stopLayoutTimer(); // إيقاف أي مؤقت سابق
+    log("📸 بدء تحليل الواجهة للشاشة: $screenName");
+
     _layoutTimer = Timer.periodic(const Duration(seconds: 5), (timer) {
       _analyzeLayout(screenName);
     });
   }
 
-  /// Stops the layout analysis timer.
+  /// ⛔ إيقاف مؤقت التحليل
   void _stopLayoutTimer() {
     _layoutTimer?.cancel();
     _layoutTimer = null;
   }
 
-  /// Analyzes the layout of the current screen and logs the data.
+  /// ✅ تحليل الواجهة والتقاط لقطة شاشة
   Future<void> _analyzeLayout(String screenName) async {
     final context = _sdk.repaintBoundaryKey.currentContext;
     if (context != null) {
       final renderObject = context.findRenderObject();
       if (renderObject is RenderBox) {
-        // Extract layout components (e.g., TextFormFields)
         final components = _extractLayoutComponents(renderObject);
 
-        // Capture screenshot
+        // ✅ إخفاء النصوص أثناء التقاط الصورة
+        Map<RenderEditable, String> originalTexts = {};
+        _maskTextFieldContent(renderObject, originalTexts);
+
+        // ✅ التقاط الصورة
         await _captureScreenshot(screenName, renderObject);
 
-        // Log layout data
+        // ✅ استعادة النصوص بعد التقاط الصورة فورًا
+        _restoreTextFieldContent(renderObject, originalTexts);
+
+        // ✅ تسجيل البيانات
         final layoutData = {
           'screenName': screenName,
           'currentTime': DateTime.now().toIso8601String(),
@@ -56,18 +63,21 @@ class LayoutService {
     }
   }
 
-  /// Masks the content of text fields temporarily before taking a screenshot.
+  /// ✅ إخفاء محتوى TextField أثناء اللقطة
   void _maskTextFieldContent(
       RenderObject renderObject, Map<RenderEditable, String> originalTexts) {
     if (renderObject is RenderEditable && hideTextFieldContent) {
       // حفظ النص الأصلي
       originalTexts[renderObject] = renderObject.text!.toPlainText();
 
-      // إخفاء المحتوى مؤقتًا
+      // إخفاء المحتوى أثناء اللقطة فقط
       renderObject.text = TextSpan(
-        text: '*******', // إخفاء المحتوى أثناء اللقطة فقط
+        text: '*******',
         style: renderObject.text!.style,
       );
+
+      // إعادة رسم الشاشة فورًا
+      renderObject.markNeedsPaint();
     }
 
     renderObject.visitChildren((child) {
@@ -75,16 +85,18 @@ class LayoutService {
     });
   }
 
-  /// Restores the original content of text fields after taking a screenshot.
+  /// ✅ استعادة محتوى TextField بعد اللقطة مباشرة
   void _restoreTextFieldContent(
       RenderObject renderObject, Map<RenderEditable, String> originalTexts) {
     if (renderObject is RenderEditable && hideTextFieldContent) {
-      // استعادة النص الأصلي
       if (originalTexts.containsKey(renderObject)) {
         renderObject.text = TextSpan(
-          text: originalTexts[renderObject]!, // استعادة المحتوى
+          text: originalTexts[renderObject]!,
           style: renderObject.text!.style,
         );
+
+        // إعادة رسم الشاشة فورًا
+        renderObject.markNeedsPaint();
       }
     }
 
@@ -93,18 +105,11 @@ class LayoutService {
     });
   }
 
-  /// Captures a screenshot while temporarily hiding text field content.
+  /// ✅ التقاط لقطة الشاشة وحفظها
   Future<void> _captureScreenshot(
       String screenName, RenderObject renderObject) async {
     try {
       if (renderObject is RenderRepaintBoundary) {
-        // إنشاء خريطة لحفظ النصوص الأصلية قبل إخفائها
-        Map<RenderEditable, String> originalTexts = {};
-
-        // إخفاء النصوص قبل اللقطة
-        _maskTextFieldContent(renderObject, originalTexts);
-
-        // التقاط الصورة
         final ui.Image image = await renderObject.toImage(pixelRatio: 3.0);
         final ByteData? byteData =
             await image.toByteData(format: ui.ImageByteFormat.png);
@@ -112,13 +117,10 @@ class LayoutService {
 
         final Uint8List pngBytes = byteData.buffer.asUint8List();
 
-        // إعادة النصوص الأصلية بعد اللقطة مباشرةً
-        _restoreTextFieldContent(renderObject, originalTexts);
-
-        // حفظ الصورة في التخزين
+        // حفظ الصورة
         final directory = await getExternalStorageDirectory();
         if (directory == null) {
-          debugPrint("Error: External storage directory not found.");
+          debugPrint("❌ خطأ: لم يتم العثور على مسار التخزين الخارجي.");
           return;
         }
 
@@ -133,31 +135,29 @@ class LayoutService {
         final file = File(filePath);
         await file.writeAsBytes(pngBytes);
 
-        debugPrint("✅ Screenshot saved: $filePath");
+        debugPrint("✅ تم حفظ لقطة الشاشة: $filePath");
       } else {
         debugPrint(
-            "RenderObject is not a RenderRepaintBoundary, cannot capture screenshot.");
+            "❌ RenderObject ليس RenderRepaintBoundary، لا يمكن التقاط لقطة شاشة.");
       }
     } catch (e) {
-      debugPrint("❌ Error capturing screenshot: $e");
+      debugPrint("❌ خطأ في التقاط لقطة الشاشة: $e");
     }
   }
 
-  /// Extracts layout components and detects TextFields.
+  /// ✅ استخراج مكونات الشاشة
   List<Map<String, dynamic>> _extractLayoutComponents(RenderBox renderObject) {
     final components = <Map<String, dynamic>>[];
     _visitRenderObject(renderObject, components);
     return components;
   }
 
-  /// Visits each RenderObject to extract its properties.
+  /// ✅ زيارة جميع المكونات وتحليلها
   void _visitRenderObject(
       RenderObject renderObject, List<Map<String, dynamic>> components) {
     if (renderObject is RenderBox) {
       final offset = renderObject.localToGlobal(Offset.zero);
       final size = renderObject.size;
-
-      // Check if the widget is a TextField
       bool isTextField = _isTextField(renderObject);
 
       components.add({
@@ -177,58 +177,49 @@ class LayoutService {
     });
   }
 
-  /// Checks if the RenderObject is a TextField.
+  /// ✅ التحقق مما إذا كان المكون TextField
   bool _isTextField(RenderObject renderObject) {
-    // You can add more conditions to detect TextFields
     return renderObject.runtimeType.toString().contains('EditableText');
   }
 
-  /// Gets the content of a TextField (if applicable).
+  /// ✅ جلب محتوى TextField (إذا كان متاحًا)
   String _getTextFieldContent(RenderObject renderObject) {
-    // Example: Access the text content of a TextField
     if (renderObject is RenderEditable) {
       return renderObject.text!.toPlainText();
     }
     return 'Not a TextField';
   }
 
-  /// Logs the layout data to the console and saves it to a file.
+  /// ✅ تسجيل بيانات الواجهة
   void _logLayoutData(Map<String, dynamic> layoutData) {
     String jsonData = jsonEncode(layoutData);
-
-    // 1. Log to the console
-    debugPrint("Layout Data: $jsonData", wrapWidth: 1024);
-
-    // 2. Save the log to a file
+    debugPrint("📋 بيانات الواجهة: $jsonData", wrapWidth: 1024);
     _saveLogToFile(jsonData);
   }
 
-  /// Saves the log data to a file for persistence.
+  /// ✅ حفظ السجلات في ملف
   Future<void> _saveLogToFile(String logData) async {
     try {
-      // Get the external storage directory (next to Downloads, Pictures, etc.)
       final directory = await getExternalStorageDirectory();
       if (directory == null) {
-        debugPrint("Error: External storage directory not found.");
+        debugPrint("❌ خطأ: لم يتم العثور على مسار التخزين الخارجي.");
         return;
       }
 
-      // Create a custom folder (e.g., QubeLogs)
       final folderPath = '${directory.path}/QubeLogs';
       final folder = Directory(folderPath);
       if (!folder.existsSync()) {
         folder.createSync(recursive: true);
       }
 
-      // Save the log file in the custom folder
       final file = File('$folderPath/layout_log.txt');
       await file.writeAsString("$logData\n", mode: FileMode.append);
     } catch (e) {
-      debugPrint("Error writing log to file: $e");
+      debugPrint("❌ خطأ في كتابة السجل إلى الملف: $e");
     }
   }
 
-  /// Stops the layout analysis.
+  /// ⛔ إيقاف تحليل الواجهة
   void stopLayoutAnalysis() {
     _stopLayoutTimer();
   }
