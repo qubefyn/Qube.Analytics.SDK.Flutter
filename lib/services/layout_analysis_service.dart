@@ -56,14 +56,55 @@ class LayoutService {
     }
   }
 
-  /// Captures a screenshot of the current screen.
+  /// Masks the content of text fields temporarily before taking a screenshot.
+  void _maskTextFieldContent(
+      RenderObject renderObject, Map<RenderEditable, String> originalTexts) {
+    if (renderObject is RenderEditable && hideTextFieldContent) {
+      // حفظ النص الأصلي
+      originalTexts[renderObject] = renderObject.text!.toPlainText();
+
+      // إخفاء المحتوى مؤقتًا
+      renderObject.text = TextSpan(
+        text: '', // إخفاء المحتوى أثناء اللقطة فقط
+        style: renderObject.text!.style,
+      );
+    }
+
+    renderObject.visitChildren((child) {
+      _maskTextFieldContent(child, originalTexts);
+    });
+  }
+
+  /// Restores the original content of text fields after taking a screenshot.
+  void _restoreTextFieldContent(
+      RenderObject renderObject, Map<RenderEditable, String> originalTexts) {
+    if (renderObject is RenderEditable && hideTextFieldContent) {
+      // استعادة النص الأصلي
+      if (originalTexts.containsKey(renderObject)) {
+        renderObject.text = TextSpan(
+          text: originalTexts[renderObject]!, // استعادة المحتوى
+          style: renderObject.text!.style,
+        );
+      }
+    }
+
+    renderObject.visitChildren((child) {
+      _restoreTextFieldContent(child, originalTexts);
+    });
+  }
+
+  /// Captures a screenshot while temporarily hiding text field content.
   Future<void> _captureScreenshot(
       String screenName, RenderObject renderObject) async {
     try {
       if (renderObject is RenderRepaintBoundary) {
-        // Mask text field content before capturing the screenshot
-        _maskTextFieldContent(renderObject);
+        // إنشاء خريطة لحفظ النصوص الأصلية قبل إخفائها
+        Map<RenderEditable, String> originalTexts = {};
 
+        // إخفاء النصوص قبل اللقطة
+        _maskTextFieldContent(renderObject, originalTexts);
+
+        // التقاط الصورة
         final ui.Image image = await renderObject.toImage(pixelRatio: 3.0);
         final ByteData? byteData =
             await image.toByteData(format: ui.ImageByteFormat.png);
@@ -71,61 +112,35 @@ class LayoutService {
 
         final Uint8List pngBytes = byteData.buffer.asUint8List();
 
-        // Get the external storage directory (next to Downloads, Pictures, etc.)
+        // إعادة النصوص الأصلية بعد اللقطة مباشرةً
+        _restoreTextFieldContent(renderObject, originalTexts);
+
+        // حفظ الصورة في التخزين
         final directory = await getExternalStorageDirectory();
         if (directory == null) {
           debugPrint("Error: External storage directory not found.");
           return;
         }
 
-        // Create a custom folder (e.g., QubeScreenshots)
         final folderPath = '${directory.path}/QubeScreenshots';
         final folder = Directory(folderPath);
         if (!folder.existsSync()) {
           folder.createSync(recursive: true);
         }
 
-        // Save the screenshot in the custom folder
         final filePath =
             '$folderPath/screenshot_${DateTime.now().millisecondsSinceEpoch}.png';
         final file = File(filePath);
         await file.writeAsBytes(pngBytes);
 
-        debugPrint("Screenshot saved: $filePath");
-
-        // Restore text field content after capturing the screenshot
-        _restoreTextFieldContent(renderObject);
+        debugPrint("✅ Screenshot saved: $filePath");
       } else {
         debugPrint(
             "RenderObject is not a RenderRepaintBoundary, cannot capture screenshot.");
       }
     } catch (e) {
-      debugPrint("Error capturing screenshot: $e");
+      debugPrint("❌ Error capturing screenshot: $e");
     }
-  }
-
-  /// Masks the content of text fields in the render tree.
-  void _maskTextFieldContent(RenderObject renderObject) {
-    if (renderObject is RenderEditable && hideTextFieldContent) {
-      // Replace the text content with a placeholder (e.g., "*****")
-      renderObject.text = TextSpan(
-        text: '',
-        style: renderObject.text!.style,
-      );
-    }
-    renderObject.visitChildren(_maskTextFieldContent);
-  }
-
-  /// Restores the original content of text fields in the render tree.
-  void _restoreTextFieldContent(RenderObject renderObject) {
-    if (renderObject is RenderEditable && hideTextFieldContent) {
-      // Restore the original text content
-      renderObject.text = TextSpan(
-        text: renderObject.text!.toPlainText(),
-        style: renderObject.text!.style,
-      );
-    }
-    renderObject.visitChildren(_restoreTextFieldContent);
   }
 
   /// Extracts layout components and detects TextFields.
