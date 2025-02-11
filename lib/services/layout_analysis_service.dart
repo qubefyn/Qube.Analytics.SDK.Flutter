@@ -6,50 +6,38 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/rendering.dart';
-import 'package:flutter/scheduler.dart';
+import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:qube_analytics_sdk/qube_analytics_sdk.dart';
 
 class LayoutService {
   final QubeAnalyticsSDK _sdk;
   Timer? _layoutTimer;
-
-  // خريطة لحفظ النصوص الأصلية لكل TextField
-  final Map<RenderEditable, String> _originalTextFieldContents = {};
-
-  // تفعيل أو تعطيل إخفاء النصوص في الصور
   static bool hideTextFieldContent = true;
 
   LayoutService(this._sdk);
 
-  /// بدء تحليل اللاي أوت للصفحة الحالية
   void startLayoutAnalysis(String screenName) {
-    _stopLayoutTimer(); // إيقاف أي مؤقت سابق
+    _stopLayoutTimer();
     log("📸 بدء تحليل الصفحة: $screenName");
     _layoutTimer = Timer.periodic(const Duration(seconds: 5), (timer) {
       _analyzeLayout(screenName);
     });
   }
 
-  /// إيقاف مؤقت تحليل اللاي أوت
   void _stopLayoutTimer() {
     _layoutTimer?.cancel();
     _layoutTimer = null;
   }
 
-  /// تحليل الصفحة وأخذ لقطة
   Future<void> _analyzeLayout(String screenName) async {
     final context = _sdk.repaintBoundaryKey.currentContext;
     if (context != null) {
       final renderObject = context.findRenderObject();
       if (renderObject is RenderBox) {
-        // استخراج بيانات اللاي أوت
         final components = _extractLayoutComponents(renderObject);
+        await _captureOffscreenScreenshot(screenName, renderObject);
 
-        // أخذ لقطة
-        await _captureScreenshot(screenName, renderObject);
-
-        // تسجيل بيانات اللاي أوت
         final layoutData = {
           'screenName': screenName,
           'currentTime': DateTime.now().toIso8601String(),
@@ -60,109 +48,133 @@ class LayoutService {
     }
   }
 
-  /// أخذ لقطة شاشة وإخفاء محتويات `TextField` أثناء العملية فقط
-  Future<void> _captureScreenshot(
-      String screenName, RenderObject renderObject) async {
+  Future<ui.Image> _renderToImage(RenderObject renderObject, Size size) async {
+    final recorder = ui.PictureRecorder();
+    final canvas = Canvas(recorder);
+
+    if (renderObject is RenderBox) {
+      final paintContext = _DummyPaintingContext(canvas, Offset.zero, size);
+      renderObject.paint(paintContext, Offset.zero);
+    }
+
+    final picture = recorder.endRecording();
+    return picture.toImage(size.width.ceil(), size.height.ceil());
+  }
+
+  Future<void> _captureOffscreenScreenshot(
+      String screenName, RenderObject originalRenderObject) async {
     try {
-      if (renderObject is RenderRepaintBoundary) {
-        // 1️⃣ **حفظ محتويات جميع TextFields الأصلية**
-        _saveOriginalTextFieldContents(renderObject);
+      if (originalRenderObject is RenderRepaintBoundary) {
+        final size = originalRenderObject.size;
+        final clonedTree = await _cloneRenderTree(originalRenderObject);
+        _maskTextFieldsInClonedTree(clonedTree);
 
-        // 2️⃣ **إخفاء محتوى TextFields قبل التقاط الصورة**
-        _maskTextFieldContent(renderObject);
+        // Render to image
+        final image = await _renderToImage(clonedTree, size);
 
-        // **التقاط اللقطة بعد تحديث واجهة المستخدم**
-        SchedulerBinding.instance.addPostFrameCallback((_) async {
-          final ui.Image image = await renderObject.toImage(pixelRatio: 3.0);
-          final ByteData? byteData =
-              await image.toByteData(format: ui.ImageByteFormat.png);
-          if (byteData == null) return;
-          final Uint8List pngBytes = byteData.buffer.asUint8List();
+        final ByteData? byteData =
+            await image.toByteData(format: ui.ImageByteFormat.png);
+        if (byteData == null) return;
 
-          // 4️⃣ **إعادة المحتوى الأصلي فورًا بعد التقاط الصورة**
-          SchedulerBinding.instance.addPostFrameCallback((_) {
-            _restoreTextFieldContent(renderObject);
-          });
+        final Uint8List pngBytes = byteData.buffer.asUint8List();
 
-          // 5️⃣ **حفظ الصورة في التخزين**
-          final directory = await getExternalStorageDirectory();
-          if (directory == null) {
-            debugPrint("❌ خطأ: لم يتم العثور على مجلد التخزين.");
-            return;
-          }
+        final directory = await getExternalStorageDirectory();
+        if (directory == null) {
+          debugPrint("❌ خطأ: لم يتم العثور على مجلد التخزين.");
+          return;
+        }
 
-          final folderPath = '${directory.path}/QubeScreenshots';
-          final folder = Directory(folderPath);
-          if (!folder.existsSync()) {
-            folder.createSync(recursive: true);
-          }
+        final folderPath = '${directory.path}/QubeScreenshots';
+        final folder = Directory(folderPath);
+        if (!folder.existsSync()) {
+          folder.createSync(recursive: true);
+        }
 
-          final filePath =
-              '$folderPath/screenshot_${DateTime.now().millisecondsSinceEpoch}.png';
-          final file = File(filePath);
-          await file.writeAsBytes(pngBytes);
+        final filePath =
+            '$folderPath/screenshot_${DateTime.now().millisecondsSinceEpoch}.png';
+        final file = File(filePath);
+        await file.writeAsBytes(pngBytes);
 
-          debugPrint("✅ لقطة الشاشة تم حفظها: $filePath");
-        });
-      } else {
-        debugPrint(
-            "❌ RenderObject ليس RenderRepaintBoundary، لا يمكن التقاط لقطة.");
+        debugPrint("✅ تم حفظ لقطة الشاشة: $filePath");
+
+        image.dispose();
       }
     } catch (e) {
       debugPrint("❌ خطأ أثناء التقاط لقطة الشاشة: $e");
     }
   }
 
-  /// 1️⃣ **حفظ النصوص الأصلية لـ `TextField`**
-  void _saveOriginalTextFieldContents(RenderObject renderObject) {
-    if (renderObject is RenderEditable && hideTextFieldContent) {
-      _originalTextFieldContents[renderObject] =
-          renderObject.text!.toPlainText();
-    }
-    renderObject.visitChildren(_saveOriginalTextFieldContents);
+  Future<RenderRepaintBoundary> _cloneRenderTree(
+      RenderRepaintBoundary original) async {
+    final clone = RenderRepaintBoundary();
+    final cloneBox = RenderProxyBox();
+    clone.child = cloneBox;
+
+    await _cloneChildren(original, cloneBox);
+
+    return clone;
   }
 
-  /// 2️⃣ **إخفاء محتويات `TextField` مؤقتًا**
-  void _maskTextFieldContent(RenderObject renderObject) {
+  Future<void> _cloneChildren(
+      RenderObject originalChild, RenderProxyBox parent) async {
+    if (originalChild is RenderEditable) {
+      final delegate = _DummyTextSelectionDelegate();
+      final startHandleLayerLink = LayerLink();
+      final endHandleLayerLink = LayerLink();
+
+      final newEditable = RenderEditable(
+        text: originalChild.text,
+        textDirection: originalChild.textDirection,
+        textAlign: originalChild.textAlign,
+        cursorColor: originalChild.cursorColor,
+        backgroundCursorColor: originalChild.backgroundCursorColor,
+        showCursor: originalChild.showCursor,
+        maxLines: originalChild.maxLines,
+        minLines: originalChild.minLines,
+        expands: originalChild.expands,
+        selection: originalChild.selection,
+        offset: ViewportOffset.zero(),
+        startHandleLayerLink: startHandleLayerLink,
+        endHandleLayerLink: endHandleLayerLink,
+        textSelectionDelegate: delegate,
+        textScaler: TextScaler.linear(originalChild.textScaleFactor),
+        ignorePointer: true,
+      );
+
+      parent.child = newEditable;
+    } else if (originalChild is RenderBox) {
+      final newBox = RenderProxyBox();
+      parent.child = newBox;
+
+      originalChild.visitChildren((child) async {
+        await _cloneChildren(child, newBox);
+      });
+    }
+  }
+
+  void _maskTextFieldsInClonedTree(RenderObject renderObject) {
     if (renderObject is RenderEditable && hideTextFieldContent) {
       renderObject.text = TextSpan(
-        text: '*****', // استبدال النص بالمحتوى المخفي
+        text: '*****',
         style: renderObject.text!.style,
       );
       renderObject.markNeedsPaint();
     }
-    renderObject.visitChildren(_maskTextFieldContent);
+    renderObject.visitChildren(_maskTextFieldsInClonedTree);
   }
 
-  /// 3️⃣ **إعادة النصوص الأصلية بعد التقاط الصورة**
-  void _restoreTextFieldContent(RenderObject renderObject) {
-    if (renderObject is RenderEditable && hideTextFieldContent) {
-      if (_originalTextFieldContents.containsKey(renderObject)) {
-        renderObject.text = TextSpan(
-          text: _originalTextFieldContents[renderObject]!,
-          style: renderObject.text!.style,
-        );
-        renderObject.markNeedsPaint();
-      }
-    }
-    renderObject.visitChildren(_restoreTextFieldContent);
-  }
-
-  /// استخراج مكونات الصفحة والتعرف على `TextField`
   List<Map<String, dynamic>> _extractLayoutComponents(RenderBox renderObject) {
     final components = <Map<String, dynamic>>[];
     _visitRenderObject(renderObject, components);
     return components;
   }
 
-  /// فحص كل `RenderObject` في الشجرة لاستخراج بيانات اللاي أوت
   void _visitRenderObject(
       RenderObject renderObject, List<Map<String, dynamic>> components) {
     if (renderObject is RenderBox) {
       final offset = renderObject.localToGlobal(Offset.zero);
       final size = renderObject.size;
 
-      // التحقق مما إذا كان `TextField`
       bool isTextField = _isTextField(renderObject);
 
       components.add({
@@ -182,12 +194,10 @@ class LayoutService {
     });
   }
 
-  /// التحقق مما إذا كان العنصر `TextField`
   bool _isTextField(RenderObject renderObject) {
     return renderObject.runtimeType.toString().contains('EditableText');
   }
 
-  /// استخراج النص من `TextField` (إذا كان موجودًا)
   String _getTextFieldContent(RenderObject renderObject) {
     if (renderObject is RenderEditable) {
       return renderObject.text!.toPlainText();
@@ -195,14 +205,12 @@ class LayoutService {
     return 'Not a TextField';
   }
 
-  /// تسجيل بيانات اللاي أوت وحفظها في ملف
   void _logLayoutData(Map<String, dynamic> layoutData) {
     String jsonData = jsonEncode(layoutData);
     debugPrint("📜 بيانات اللاي أوت: $jsonData", wrapWidth: 1024);
     _saveLogToFile(jsonData);
   }
 
-  /// حفظ بيانات اللاي أوت في ملف
   Future<void> _saveLogToFile(String logData) async {
     try {
       final directory = await getExternalStorageDirectory();
@@ -221,8 +229,75 @@ class LayoutService {
     }
   }
 
-  /// إيقاف تحليل اللاي أوت
   void stopLayoutAnalysis() {
     _stopLayoutTimer();
+  }
+}
+
+class _DummyTextSelectionDelegate implements TextSelectionDelegate {
+  @override
+  TextEditingValue get textEditingValue => TextEditingValue.empty;
+
+  @override
+  void bringIntoView(TextPosition position) {}
+
+  @override
+  void hideToolbar([bool hideHandles = true]) {}
+
+  @override
+  void userUpdateTextEditingValue(
+      TextEditingValue value, SelectionChangedCause cause) {}
+
+  @override
+  bool get copyEnabled => false;
+
+  @override
+  bool get cutEnabled => false;
+
+  @override
+  bool get pasteEnabled => false;
+
+  @override
+  bool get selectAllEnabled => false;
+
+  @override
+  void copySelection(SelectionChangedCause cause) {}
+
+  @override
+  void cutSelection(SelectionChangedCause cause) {}
+
+  @override
+  Future<void> pasteText(SelectionChangedCause cause) async {}
+
+  @override
+  void selectAll(SelectionChangedCause cause) {}
+
+  @override
+  bool get liveTextInputEnabled => false;
+
+  @override
+  bool get lookUpEnabled => false;
+
+  @override
+  bool get searchWebEnabled => false;
+
+  @override
+  bool get shareEnabled => false;
+}
+
+class _DummyPaintingContext extends PaintingContext {
+  @override
+  final Canvas canvas;
+  final Offset originOffset;
+  final Size size;
+
+  _DummyPaintingContext(this.canvas, this.originOffset, this.size)
+      : super(ContainerLayer(), Rect.fromLTWH(0, 0, size.width, size.height));
+
+  @override
+  void paintChild(RenderObject child, Offset offset) {
+    if (child is RenderBox) {
+      child.paint(this, offset);
+    }
   }
 }
