@@ -331,42 +331,52 @@ abstract class ScreenTracker {
 }
 
 class QubeNavigatorObserver extends NavigatorObserver {
-  final QubeAnalyticsSDK sdk;
-  QubeNavigatorObserver(this.sdk);
+  final QubeAnalyticsSDK _sdk;
+
+  QubeNavigatorObserver(this._sdk);
 
   @override
   void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) {
     super.didPush(route, previousRoute);
 
     final screenName = _extractScreenName(route);
-    sdk.trackScreenView(ScreenViewData(
+
+    _sdk.trackScreenView(ScreenViewData(
       screenId: screenName.hashCode.toString(),
       screenPath: screenName,
       screenName: screenName,
       visitDateTime: DateTime.now(),
-      sessionId: sdk.sessionId,
+      sessionId: _sdk.sessionId,
     ));
 
-    // ✅ بدء التقاط الصور للشاشة الجديدة
-    sdk.layoutService.startLayoutAnalysis(screenName);
+    // ✅ إيقاف التقاط الشاشة للصفحة السابقة (إذا وُجدت)
+    _sdk.layoutService.stopLayoutAnalysis();
+
+    // ✅ بدء التقاط الشاشة للصفحة الجديدة
+    _sdk.layoutService.startLayoutAnalysis(screenName);
   }
 
   @override
   void didPop(Route<dynamic> route, Route<dynamic>? previousRoute) {
     super.didPop(route, previousRoute);
 
-    // ✅ إيقاف التقاط الصور عند الخروج من الصفحة
-    sdk.layoutService.stopLayoutAnalysis();
+    final screenName = _extractScreenName(previousRoute);
+
+    _sdk.trackScreenView(ScreenViewData(
+      screenId: screenName.hashCode.toString(),
+      screenPath: screenName,
+      screenName: screenName,
+      visitDateTime: DateTime.now(),
+      sessionId: _sdk.sessionId,
+    ));
+
+    // ✅ إعادة تشغيل التقاط الشاشة بعد الرجوع إلى الصفحة السابقة
+    _sdk.layoutService.startLayoutAnalysis(screenName);
   }
 
-  String _extractScreenName(Route<dynamic> route) {
-    try {
-      if (route.settings.name != null) {
-        return route.settings.name!;
-      }
-    } catch (e) {
-      print('❌ Error extracting screen name: $e');
-    }
-    return route.runtimeType.toString();
+  /// ✅ استخراج اسم الشاشة بشكل آمن
+  String _extractScreenName(Route<dynamic>? route) {
+    if (route == null) return "Unknown";
+    return route.settings.name ?? route.runtimeType.toString();
   }
 }
