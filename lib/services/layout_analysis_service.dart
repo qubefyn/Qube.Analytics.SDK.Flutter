@@ -80,7 +80,9 @@ class LayoutService {
           final Uint8List pngBytes = byteData.buffer.asUint8List();
 
           // 4️⃣ **إعادة المحتوى الأصلي فورًا بعد التقاط الصورة**
-          _restoreTextFieldContent(renderObject);
+          SchedulerBinding.instance.addPostFrameCallback((_) {
+            _restoreTextFieldContent(renderObject);
+          });
 
           // 5️⃣ **حفظ الصورة في التخزين**
           final directory = await getExternalStorageDirectory();
@@ -127,6 +129,7 @@ class LayoutService {
         text: '*****', // استبدال النص بالمحتوى المخفي
         style: renderObject.text!.style,
       );
+      renderObject.markNeedsPaint();
     }
     renderObject.visitChildren(_maskTextFieldContent);
   }
@@ -139,6 +142,7 @@ class LayoutService {
           text: _originalTextFieldContents[renderObject]!,
           style: renderObject.text!.style,
         );
+        renderObject.markNeedsPaint();
       }
     }
     renderObject.visitChildren(_restoreTextFieldContent);
