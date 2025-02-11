@@ -352,8 +352,11 @@ class QubeNavigatorObserver extends NavigatorObserver {
     // ✅ إيقاف التقاط الشاشة للصفحة السابقة (إذا وُجدت)
     _sdk.layoutService.stopLayoutAnalysis();
 
-    // ✅ بدء التقاط الشاشة للصفحة الجديدة
-    _sdk.layoutService.startLayoutAnalysis(screenName);
+    // ✅ الحصول على `widgetTree` وتمريره لتحليل اللاي أوت
+    if (route is MaterialPageRoute) {
+      final widgetTree = route.builder(navigator!.context);
+      _sdk.layoutService.startLayoutAnalysis(screenName, widgetTree);
+    }
   }
 
   @override
@@ -371,7 +374,10 @@ class QubeNavigatorObserver extends NavigatorObserver {
     ));
 
     // ✅ إعادة تشغيل التقاط الشاشة بعد الرجوع إلى الصفحة السابقة
-    _sdk.layoutService.startLayoutAnalysis(screenName);
+    if (previousRoute is MaterialPageRoute) {
+      final widgetTree = previousRoute.builder(navigator!.context);
+      _sdk.layoutService.startLayoutAnalysis(screenName, widgetTree);
+    }
   }
 
   /// ✅ استخراج اسم الشاشة بشكل آمن
