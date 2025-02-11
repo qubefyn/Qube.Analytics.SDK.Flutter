@@ -6,6 +6,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/rendering.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:qube_analytics_sdk/qube_analytics_sdk.dart';
 
@@ -70,35 +71,37 @@ class LayoutService {
         // 2️⃣ **إخفاء محتوى TextFields قبل التقاط الصورة**
         _maskTextFieldContent(renderObject);
 
-        // 3️⃣ **التقاط الصورة**
-        final ui.Image image = await renderObject.toImage(pixelRatio: 3.0);
-        final ByteData? byteData =
-            await image.toByteData(format: ui.ImageByteFormat.png);
-        if (byteData == null) return;
-        final Uint8List pngBytes = byteData.buffer.asUint8List();
+        // **التقاط اللقطة بعد تحديث واجهة المستخدم**
+        SchedulerBinding.instance.addPostFrameCallback((_) async {
+          final ui.Image image = await renderObject.toImage(pixelRatio: 3.0);
+          final ByteData? byteData =
+              await image.toByteData(format: ui.ImageByteFormat.png);
+          if (byteData == null) return;
+          final Uint8List pngBytes = byteData.buffer.asUint8List();
 
-        // 4️⃣ **إعادة المحتوى الأصلي فورًا بعد التقاط الصورة**
-        _restoreTextFieldContent(renderObject);
+          // 4️⃣ **إعادة المحتوى الأصلي فورًا بعد التقاط الصورة**
+          _restoreTextFieldContent(renderObject);
 
-        // 5️⃣ **حفظ الصورة في التخزين**
-        final directory = await getExternalStorageDirectory();
-        if (directory == null) {
-          debugPrint("❌ خطأ: لم يتم العثور على مجلد التخزين.");
-          return;
-        }
+          // 5️⃣ **حفظ الصورة في التخزين**
+          final directory = await getExternalStorageDirectory();
+          if (directory == null) {
+            debugPrint("❌ خطأ: لم يتم العثور على مجلد التخزين.");
+            return;
+          }
 
-        final folderPath = '${directory.path}/QubeScreenshots';
-        final folder = Directory(folderPath);
-        if (!folder.existsSync()) {
-          folder.createSync(recursive: true);
-        }
+          final folderPath = '${directory.path}/QubeScreenshots';
+          final folder = Directory(folderPath);
+          if (!folder.existsSync()) {
+            folder.createSync(recursive: true);
+          }
 
-        final filePath =
-            '$folderPath/screenshot_${DateTime.now().millisecondsSinceEpoch}.png';
-        final file = File(filePath);
-        await file.writeAsBytes(pngBytes);
+          final filePath =
+              '$folderPath/screenshot_${DateTime.now().millisecondsSinceEpoch}.png';
+          final file = File(filePath);
+          await file.writeAsBytes(pngBytes);
 
-        debugPrint("✅ لقطة الشاشة تم حفظها: $filePath");
+          debugPrint("✅ لقطة الشاشة تم حفظها: $filePath");
+        });
       } else {
         debugPrint(
             "❌ RenderObject ليس RenderRepaintBoundary، لا يمكن التقاط لقطة.");
