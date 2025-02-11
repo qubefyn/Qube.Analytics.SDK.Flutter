@@ -8,6 +8,7 @@ import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
+import 'package:qube_analytics_sdk/services/LayoutVideoCaptureService.dart';
 import 'package:qube_analytics_sdk/services/behavior_data_service.dart';
 import 'package:qube_analytics_sdk/services/layout_analysis_service.dart';
 
@@ -107,6 +108,7 @@ class QubeAnalyticsSDK {
   static const _deviceIdKey = "device_id";
   static const _storage = FlutterSecureStorage();
   late BehaviorDataService behaviorDataService;
+  late LayoutVideoCaptureService videoCaptureService;
 
   late String sessionId;
   late UserData userData;
@@ -123,6 +125,7 @@ class QubeAnalyticsSDK {
     print("SDK Initialized: ${jsonEncode(userData)}");
     behaviorDataService = BehaviorDataService(this);
     layoutService = LayoutService(this);
+    videoCaptureService = LayoutVideoCaptureService(this);
     FlutterError.onError = (FlutterErrorDetails details) {
       trackError(ErrorData(
         sessionId: sessionId,
@@ -349,11 +352,8 @@ class QubeNavigatorObserver extends NavigatorObserver {
     // ✅ إيقاف التقاط الشاشة للصفحة السابقة (إذا وُجدت)
     _sdk.layoutService.stopLayoutAnalysis();
 
-    // ✅ الحصول على `widgetTree` وتمريره لتحليل اللاي أوت
-    if (route is MaterialPageRoute) {
-      final widgetTree = route.builder(navigator!.context);
-      _sdk.layoutService.startLayoutAnalysis(screenName, widgetTree);
-    }
+    // ✅ بدء التقاط الشاشة للصفحة الجديدة
+    _sdk.layoutService.startLayoutAnalysis(screenName);
   }
 
   @override
@@ -371,10 +371,7 @@ class QubeNavigatorObserver extends NavigatorObserver {
     ));
 
     // ✅ إعادة تشغيل التقاط الشاشة بعد الرجوع إلى الصفحة السابقة
-    if (previousRoute is MaterialPageRoute) {
-      final widgetTree = previousRoute.builder(navigator!.context);
-      _sdk.layoutService.startLayoutAnalysis(screenName, widgetTree);
-    }
+    _sdk.layoutService.startLayoutAnalysis(screenName);
   }
 
   /// ✅ استخراج اسم الشاشة بشكل آمن
