@@ -331,13 +331,14 @@ abstract class ScreenTracker {
 }
 
 class QubeNavigatorObserver extends NavigatorObserver {
+  final QubeAnalyticsSDK sdk;
+  QubeNavigatorObserver(this.sdk);
+
   @override
   void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) {
     super.didPush(route, previousRoute);
 
-    final sdk = QubeAnalyticsSDK();
     final screenName = _extractScreenName(route);
-
     sdk.trackScreenView(ScreenViewData(
       screenId: screenName.hashCode.toString(),
       screenPath: screenName,
@@ -345,17 +346,27 @@ class QubeNavigatorObserver extends NavigatorObserver {
       visitDateTime: DateTime.now(),
       sessionId: sdk.sessionId,
     ));
+
+    // ✅ بدء التقاط الصور للشاشة الجديدة
+    sdk.layoutService.startLayoutAnalysis(screenName);
+  }
+
+  @override
+  void didPop(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    super.didPop(route, previousRoute);
+
+    // ✅ إيقاف التقاط الصور عند الخروج من الصفحة
+    sdk.layoutService.stopLayoutAnalysis();
   }
 
   String _extractScreenName(Route<dynamic> route) {
     try {
-      if (route.navigator?.context.widget is ScreenTracker) {
-        return (route.navigator!.context.widget as ScreenTracker).screenName;
+      if (route.settings.name != null) {
+        return route.settings.name!;
       }
     } catch (e) {
-      print('Error extracting screen name: $e');
+      print('❌ Error extracting screen name: $e');
     }
-
-    return route.settings.name ?? route.runtimeType.toString();
+    return route.runtimeType.toString();
   }
 }
