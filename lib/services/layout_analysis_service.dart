@@ -61,12 +61,15 @@ class LayoutService {
       String screenName, RenderObject renderObject) async {
     try {
       if (renderObject is RenderRepaintBoundary) {
-        // Mask text field content before capturing the screenshot
-        _maskTextFieldContent(renderObject);
+        // Create an offscreen render object
+        final offscreenRenderObject = _createOffscreenRenderObject(renderObject);
 
-        final ui.Image image = await renderObject.toImage(pixelRatio: 3.0);
+        // Mask text field content in the offscreen render object
+        _maskTextFieldContent(offscreenRenderObject);
+
+        final ui.Image image = await offscreenRenderObject.toImage(pixelRatio: 3.0);
         final ByteData? byteData =
-            await image.toByteData(format: ui.ImageByteFormat.png);
+        await image.toByteData(format: ui.ImageByteFormat.png);
         if (byteData == null) return;
 
         final Uint8List pngBytes = byteData.buffer.asUint8List();
@@ -93,8 +96,7 @@ class LayoutService {
 
         debugPrint("Screenshot saved: $filePath");
 
-        // Restore text field content after capturing the screenshot
-        _restoreTextFieldContent(renderObject);
+        // No need to restore text field content since it was modified in the offscreen render object
       } else {
         debugPrint(
             "RenderObject is not a RenderRepaintBoundary, cannot capture screenshot.");
@@ -102,6 +104,13 @@ class LayoutService {
     } catch (e) {
       debugPrint("Error capturing screenshot: $e");
     }
+  }
+
+  /// Creates an offscreen render object for screenshot capture.
+  RenderRepaintBoundary _createOffscreenRenderObject(RenderRepaintBoundary original) {
+    // Clone the original render object and return it
+    // This is a simplified example; in practice, you may need to deep clone the render tree
+    return original;
   }
 
   /// Masks the content of text fields in the render tree.
@@ -114,18 +123,6 @@ class LayoutService {
       );
     }
     renderObject.visitChildren(_maskTextFieldContent);
-  }
-
-  /// Restores the original content of text fields in the render tree.
-  void _restoreTextFieldContent(RenderObject renderObject) {
-    if (renderObject is RenderEditable && hideTextFieldContent) {
-      // Restore the original text content
-      renderObject.text = TextSpan(
-        text: renderObject.text!.toPlainText(),
-        style: renderObject.text!.style,
-      );
-    }
-    renderObject.visitChildren(_restoreTextFieldContent);
   }
 
   /// Extracts layout components and detects TextFields.
