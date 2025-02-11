@@ -4,7 +4,6 @@ import 'dart:developer';
 import 'dart:io';
 import 'dart:ui' as ui;
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/rendering.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:qube_analytics_sdk/qube_analytics_sdk.dart';
@@ -35,7 +34,8 @@ class LayoutService {
       final renderObject = context.findRenderObject();
       if (renderObject is RenderBox) {
         final components = _extractLayoutComponents(renderObject);
-        await _captureOffscreenScreenshot(screenName, renderObject);
+        await _captureAndMaskScreenshot(
+            screenName, renderObject as RenderRepaintBoundary);
 
         final layoutData = {
           'screenName': screenName,
@@ -47,102 +47,99 @@ class LayoutService {
     }
   }
 
-  Future<void> _captureOffscreenScreenshot(
-      String screenName, RenderObject originalRenderObject) async {
+  Future<void> _captureAndMaskScreenshot(
+      String screenName, RenderRepaintBoundary boundary) async {
     try {
-      if (originalRenderObject is RenderRepaintBoundary) {
-        // احصل على الحجم الأصلي
-        final size = originalRenderObject.size;
+      // Take the initial screenshot
+      final originalImage = await boundary.toImage(pixelRatio: 1.0);
+      final byteData =
+          await originalImage.toByteData(format: ui.ImageByteFormat.png);
+      if (byteData == null) return;
 
-        // أنشئ صورة بيضاء فارغة بنفس الحجم
-        final recorder = ui.PictureRecorder();
-        final canvas = Canvas(recorder);
+      // Create a bitmap from the screenshot
+      final codec =
+          await ui.instantiateImageCodec(byteData.buffer.asUint8List());
+      final frameInfo = await codec.getNextFrame();
+      final image = frameInfo.image;
 
-        // املأ الخلفية باللون الأبيض
-        final paint = Paint()..color = const Color(0xFFFFFFFF);
-        canvas.drawRect(Offset.zero & size, paint);
+      // Create a new image with masked text fields
+      final recorder = ui.PictureRecorder();
+      final canvas = Canvas(recorder);
+      final size = boundary.size;
 
-        // احصل على شجرة العناصر الأصلية
-        final renderElements = <RenderObject>[];
-        void collectElements(RenderObject object) {
-          renderElements.add(object);
-          object.visitChildren(collectElements);
-        }
+      // Draw the original image
+      canvas.drawImage(image, Offset.zero, Paint());
 
-        originalRenderObject.visitChildren(collectElements);
+      // Find and mask text fields
+      if (hideTextFieldContent) {
+        void maskTextFields(RenderObject object, Offset parentOffset) {
+          if (object is RenderEditable) {
+            final transform = object.getTransformTo(boundary);
+            final offset = MatrixUtils.transformPoint(transform, Offset.zero);
 
-        // ارسم كل عنصر مع إخفاء محتوى TextFields
-        for (var element in renderElements) {
-          if (element is RenderBox) {
-            final transform = element.getTransformTo(originalRenderObject);
-            canvas.save();
-            canvas.transform(transform.storage);
+            // Draw a rectangle over the text field
+            final paint = Paint()
+              ..color = const Color(0xFFF5F5F5)
+              ..style = PaintingStyle.fill;
 
-            if (element is RenderEditable && hideTextFieldContent) {
-              // ارسم مستطيل بلون الخلفية للـ TextField
-              final backgroundPaint = Paint()
-                ..color = const Color(0xFFF5F5F5); // لون رمادي فاتح
-              canvas.drawRect(Offset.zero & element.size, backgroundPaint);
+            canvas.drawRect(
+                Rect.fromLTWH(offset.dx, offset.dy, object.size.width,
+                    object.size.height),
+                paint);
 
-              // ارسم النجوم بدلاً من النص
-              final textPaint = Paint()
-                ..color = const Color(0xFF000000); // لون أسود للنص
-              canvas.drawRect(
-                  Rect.fromLTWH(
-                      4, element.size.height / 3, element.size.width - 8, 2),
-                  textPaint);
-            } else {
-              try {
-                // أنشئ PaintingContext مؤقت للعنصر
-                final pictureRecorder = ui.PictureRecorder();
-                final elementCanvas = Canvas(pictureRecorder);
-                final paintContext = _CustomPaintingContext(
-                    elementCanvas, Offset.zero & element.size, element.owner!);
+            // Draw a line to indicate masked content
+            final linePaint = Paint()
+              ..color = const Color(0xFF9E9E9E)
+              ..strokeWidth = 2.0;
 
-                element.paint(paintContext, Offset.zero);
-                final elementPicture = pictureRecorder.endRecording();
-                canvas.drawPicture(elementPicture);
-              } catch (e) {
-                debugPrint('خطأ في رسم العنصر: $e');
-              }
-            }
-            canvas.restore();
+            canvas.drawLine(
+                Offset(offset.dx + 4, offset.dy + object.size.height / 2),
+                Offset(offset.dx + object.size.width - 4,
+                    offset.dy + object.size.height / 2),
+                linePaint);
           }
+
+          object.visitChildren((child) {
+            maskTextFields(child, parentOffset);
+          });
         }
 
-        // حوّل التسجيل إلى صورة
-        final picture = recorder.endRecording();
-        final image =
-            await picture.toImage(size.width.ceil(), size.height.ceil());
-
-        final ByteData? byteData =
-            await image.toByteData(format: ui.ImageByteFormat.png);
-        if (byteData == null) return;
-
-        final Uint8List pngBytes = byteData.buffer.asUint8List();
-
-        // احفظ الصورة
-        final directory = await getExternalStorageDirectory();
-        if (directory == null) {
-          debugPrint("❌ خطأ: لم يتم العثور على مجلد التخزين.");
-          return;
-        }
-
-        final folderPath = '${directory.path}/QubeScreenshots';
-        final folder = Directory(folderPath);
-        if (!folder.existsSync()) {
-          folder.createSync(recursive: true);
-        }
-
-        final filePath =
-            '$folderPath/screenshot_${DateTime.now().millisecondsSinceEpoch}.png';
-        final file = File(filePath);
-        await file.writeAsBytes(pngBytes);
-
-        debugPrint("✅ تم حفظ لقطة الشاشة: $filePath");
-
-        image.dispose();
+        maskTextFields(boundary, Offset.zero);
       }
+
+      // Convert to final image
+      final picture = recorder.endRecording();
+      final maskedImage =
+          await picture.toImage(size.width.ceil(), size.height.ceil());
+
+      final maskedByteData =
+          await maskedImage.toByteData(format: ui.ImageByteFormat.png);
+      if (maskedByteData == null) return;
+
+      // Save the image
+      final directory = await getExternalStorageDirectory();
+      if (directory == null) {
+        debugPrint("❌ خطأ: لم يتم العثور على مجلد التخزين.");
+        return;
+      }
+
+      final folderPath = '${directory.path}/QubeScreenshots';
+      final folder = Directory(folderPath);
+      if (!folder.existsSync()) {
+        folder.createSync(recursive: true);
+      }
+
+      final filePath =
+          '$folderPath/screenshot_${DateTime.now().millisecondsSinceEpoch}.png';
+      final file = File(filePath);
+      await file.writeAsBytes(maskedByteData.buffer.asUint8List());
+
+      debugPrint("✅ تم حفظ لقطة الشاشة: $filePath");
+
+      // Cleanup
+      originalImage.dispose();
+      image.dispose();
+      maskedImage.dispose();
     } catch (e) {
       debugPrint("❌ خطأ أثناء التقاط لقطة الشاشة: $e");
     }
@@ -216,23 +213,5 @@ class LayoutService {
 
   void stopLayoutAnalysis() {
     _stopLayoutTimer();
-  }
-}
-
-class _CustomPaintingContext extends PaintingContext {
-  @override
-  final Canvas canvas;
-  @override
-  final Rect estimatedBounds;
-  final PipelineOwner owner;
-
-  _CustomPaintingContext(this.canvas, this.estimatedBounds, this.owner)
-      : super(ContainerLayer(), estimatedBounds);
-
-  @override
-  void paintChild(RenderObject child, Offset offset) {
-    if (child is RenderBox) {
-      child.paint(this, offset);
-    }
   }
 }
