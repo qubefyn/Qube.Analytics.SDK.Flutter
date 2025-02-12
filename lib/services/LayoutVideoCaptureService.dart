@@ -50,69 +50,92 @@ class LayoutVideoCaptureService {
     }
 
     try {
-      // Mask text field content before capturing the screenshot
-      _maskTextFieldContent(renderObject);
+      // Take the initial screenshot
+      final originalImage = await renderObject.toImage(pixelRatio: 1.0);
+      final byteData = await originalImage.toByteData(format: ui.ImageByteFormat.png);
+      if (byteData == null) return;
 
-      final ui.Image image = await renderObject.toImage();
-      final ByteData? byteData =
-          await image.toByteData(format: ui.ImageByteFormat.png);
-      if (byteData == null) {
-        debugPrint("Error: Failed to convert image to byte data.");
-        return;
+      // Create a bitmap from the screenshot
+      final codec = await ui.instantiateImageCodec(byteData.buffer.asUint8List());
+      final frameInfo = await codec.getNextFrame();
+      final image = frameInfo.image;
+
+      // Create a new image with masked text fields
+      final recorder = ui.PictureRecorder();
+      final canvas = Canvas(recorder);
+      final size = renderObject.size;
+
+      // Draw the original image
+      canvas.drawImage(image, Offset.zero, Paint());
+
+      // Find and mask text fields
+      if (LayoutService.hideTextFieldContent) {
+        void maskTextFields(RenderObject object, Offset parentOffset) {
+          if (object is RenderEditable) {
+            final transform = object.getTransformTo(renderObject);
+            final offset = MatrixUtils.transformPoint(transform, Offset.zero);
+
+            // Draw a rectangle over the text field
+            final paint = Paint()
+              ..color = const Color(0xFFF5F5F5)
+              ..style = PaintingStyle.fill;
+
+            canvas.drawRect(
+                Rect.fromLTWH(offset.dx, offset.dy, object.size.width, object.size.height),
+                paint);
+
+            // Draw a line to indicate masked content
+            final linePaint = Paint()
+              ..color = const Color(0xFF9E9E9E)
+              ..strokeWidth = 2.0;
+
+            canvas.drawLine(
+                Offset(offset.dx + 4, offset.dy + object.size.height / 2),
+                Offset(offset.dx + object.size.width - 4, offset.dy + object.size.height / 2),
+                linePaint);
+          }
+
+          object.visitChildren((child) {
+            maskTextFields(child, parentOffset);
+          });
+        }
+
+        maskTextFields(renderObject, Offset.zero);
       }
 
-      final Uint8List pngBytes = byteData.buffer.asUint8List();
+      // Convert to final image
+      final picture = recorder.endRecording();
+      final maskedImage = await picture.toImage(size.width.ceil(), size.height.ceil());
 
-      // Get the external storage directory (next to Downloads, Pictures, etc.)
+      final maskedByteData = await maskedImage.toByteData(format: ui.ImageByteFormat.png);
+      if (maskedByteData == null) return;
+
+      // Save the image
       final directory = await getExternalStorageDirectory();
       if (directory == null) {
-        debugPrint("Error: External storage directory not found.");
+        debugPrint("❌ خطأ: لم يتم العثور على مجلد التخزين.");
         return;
       }
 
-      // Create a custom folder (e.g., QubeFrames)
       final folderPath = '${directory.path}/QubeFrames';
       final folder = Directory(folderPath);
       if (!folder.existsSync()) {
         folder.createSync(recursive: true);
       }
 
-      // Save the frame in the custom folder
       final filePath = '$folderPath/frame_$_frameCount.png';
       final file = File(filePath);
-      await file.writeAsBytes(pngBytes);
+      await file.writeAsBytes(maskedByteData.buffer.asUint8List());
 
       debugPrint("Screenshot saved: $filePath");
       _frameCount++;
 
-      // Restore text field content after capturing the screenshot
-      _restoreTextFieldContent(renderObject);
+      // Cleanup
+      originalImage.dispose();
+      image.dispose();
+      maskedImage.dispose();
     } catch (e) {
       debugPrint("Error capturing screenshot: $e");
     }
-  }
-
-  /// Masks the content of text fields in the render tree.
-  void _maskTextFieldContent(RenderObject renderObject) {
-    if (renderObject is RenderEditable && LayoutService.hideTextFieldContent) {
-      // Replace the text content with a placeholder (e.g., "*****")
-      renderObject.text = TextSpan(
-        text: '*****',
-        style: renderObject.text!.style,
-      );
-    }
-    renderObject.visitChildren(_maskTextFieldContent);
-  }
-
-  /// Restores the original content of text fields in the render tree.
-  void _restoreTextFieldContent(RenderObject renderObject) {
-    if (renderObject is RenderEditable && LayoutService.hideTextFieldContent) {
-      // Restore the original text content
-      renderObject.text = TextSpan(
-        text: renderObject.text!.toPlainText(),
-        style: renderObject.text!.style,
-      );
-    }
-    renderObject.visitChildren(_restoreTextFieldContent);
   }
 }
