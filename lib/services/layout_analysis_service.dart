@@ -5,6 +5,7 @@ import 'dart:io';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
+import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:qube_analytics_sdk/qube_analytics_sdk.dart';
@@ -56,9 +57,9 @@ class LayoutService {
       final renderObject = context.findRenderObject();
       if (renderObject == null) return;
 
-      // Find the correct boundary for capturing the full scrollable content
       RenderRepaintBoundary? targetBoundary = boundary;
 
+      // Find the correct RepaintBoundary
       void findScrollableBoundary(RenderObject obj) {
         if (obj is RenderRepaintBoundary) {
           targetBoundary = obj; // Assign to the last found RepaintBoundary
@@ -73,7 +74,10 @@ class LayoutService {
         return;
       }
 
-      // Capture the full image
+      // 🛑 Wait for Flutter to finish rendering before taking a screenshot
+      await Future.delayed(Duration(milliseconds: 100)); // Small delay to ensure rendering
+      await WidgetsBinding.instance.endOfFrame; // Ensures frame is complete
+
       final ui.Image image = await targetBoundary!.toImage(pixelRatio: 1.0);
       final ByteData? byteData = await image.toByteData(format: ui.ImageByteFormat.png);
       if (byteData == null) return;
