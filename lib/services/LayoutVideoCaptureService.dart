@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/rendering.dart';
@@ -52,11 +51,13 @@ class LayoutVideoCaptureService {
     try {
       // Take the initial screenshot
       final originalImage = await renderObject.toImage(pixelRatio: 1.0);
-      final byteData = await originalImage.toByteData(format: ui.ImageByteFormat.png);
+      final byteData =
+          await originalImage.toByteData(format: ui.ImageByteFormat.png);
       if (byteData == null) return;
 
       // Create a bitmap from the screenshot
-      final codec = await ui.instantiateImageCodec(byteData.buffer.asUint8List());
+      final codec =
+          await ui.instantiateImageCodec(byteData.buffer.asUint8List());
       final frameInfo = await codec.getNextFrame();
       final image = frameInfo.image;
 
@@ -81,7 +82,8 @@ class LayoutVideoCaptureService {
               ..style = PaintingStyle.fill;
 
             canvas.drawRect(
-                Rect.fromLTWH(offset.dx, offset.dy, object.size.width, object.size.height),
+                Rect.fromLTWH(offset.dx, offset.dy, object.size.width,
+                    object.size.height),
                 paint);
 
             // Draw a line to indicate masked content
@@ -91,7 +93,8 @@ class LayoutVideoCaptureService {
 
             canvas.drawLine(
                 Offset(offset.dx + 4, offset.dy + object.size.height / 2),
-                Offset(offset.dx + object.size.width - 4, offset.dy + object.size.height / 2),
+                Offset(offset.dx + object.size.width - 4,
+                    offset.dy + object.size.height / 2),
                 linePaint);
           }
 
@@ -105,9 +108,11 @@ class LayoutVideoCaptureService {
 
       // Convert to final image
       final picture = recorder.endRecording();
-      final maskedImage = await picture.toImage(size.width.ceil(), size.height.ceil());
+      final maskedImage =
+          await picture.toImage(size.width.ceil(), size.height.ceil());
 
-      final maskedByteData = await maskedImage.toByteData(format: ui.ImageByteFormat.png);
+      final maskedByteData =
+          await maskedImage.toByteData(format: ui.ImageByteFormat.png);
       if (maskedByteData == null) return;
 
       // Save the image
