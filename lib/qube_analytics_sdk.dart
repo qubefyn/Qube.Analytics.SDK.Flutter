@@ -129,7 +129,6 @@ class QubeAnalyticsSDK {
     layoutService = LayoutService(this);
     _scrollController = scrollController;
 
-    layoutService.setScrollController(_scrollController);
     videoCaptureService = LayoutVideoCaptureService(this);
     FlutterError.onError = (FlutterErrorDetails details) {
       trackError(ErrorData(
