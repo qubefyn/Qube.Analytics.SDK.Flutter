@@ -12,34 +12,40 @@ import 'package:qube_analytics_sdk/qube_analytics_sdk.dart';
 class LayoutService {
   final QubeAnalyticsSDK _sdk;
   Timer? _layoutTimer;
-  static bool hideTextFieldContent = true;
   ScrollController? _scrollController;
+  static bool hideTextFieldContent = true;
 
   LayoutService(this._sdk);
+
+  /// ✅ تعيين `ScrollController` لالتقاط الشاشة الكاملة عند التمرير
   void setScrollController(ScrollController? controller) {
     _scrollController = controller;
   }
 
+  /// ✅ بدء تحليل اللاي أوت واللقطات
   void startLayoutAnalysis(String screenName) {
     _stopLayoutTimer();
     log("📸 بدء تحليل الصفحة: $screenName");
+
     _layoutTimer = Timer.periodic(const Duration(seconds: 5), (timer) {
       _analyzeLayout(screenName);
     });
   }
 
+  /// ✅ إيقاف التحليل عند الحاجة
   void _stopLayoutTimer() {
     _layoutTimer?.cancel();
     _layoutTimer = null;
   }
 
+  /// ✅ تحليل اللاي أوت الحالي والتقاط الشاشة
   Future<void> _analyzeLayout(String screenName) async {
     final context = _sdk.repaintBoundaryKey.currentContext;
     if (context != null) {
       final renderObject = context.findRenderObject();
       if (renderObject is RenderRepaintBoundary) {
         final components = _extractLayoutComponents(renderObject);
-        await _captureScrollableScreenshot(screenName, renderObject, context);
+        await _captureFullScreenshot(screenName, renderObject);
 
         final layoutData = {
           'screenName': screenName,
@@ -51,96 +57,77 @@ class LayoutService {
     }
   }
 
-  Future<void> _captureScrollableScreenshot(String screenName,
-      RenderRepaintBoundary boundary, BuildContext context) async {
+  /// ✅ التقاط صورة كاملة للصفحة، بما في ذلك المحتوى القابل للتمرير
+  Future<void> _captureFullScreenshot(
+      String screenName, RenderRepaintBoundary boundary) async {
     try {
-      // ✅ نحاول العثور على العنصر القابل للتمرير (ListView, SingleChildScrollView, etc.)
-      final scrollable = Scrollable.of(context);
+      if (_scrollController != null && _scrollController!.hasClients) {
+        final totalHeight = _scrollController!.position.maxScrollExtent +
+            _scrollController!.position.viewportDimension;
 
-      // ✅ نحصل على محتوى التمرير (scrollable content)
-      final RenderBox? contentBox =
-          scrollable.context.findRenderObject() as RenderBox?;
-      if (contentBox == null) return;
+        final recorder = ui.PictureRecorder();
+        final canvas = Canvas(recorder);
+        final viewportHeight = _scrollController!.position.viewportDimension;
+        final originalScrollPosition = _scrollController!.position.pixels;
 
-      // ✅ نحصل على الارتفاع الكلي للمحتوى
-      final totalHeight = contentBox.size.height;
-      final viewportHeight = scrollable.position.viewportDimension;
-      final currentScrollPosition = scrollable.position.pixels;
+        int numOfScreenshots = (totalHeight / viewportHeight).ceil();
 
-      // ✅ نسجل صورة الصفحة بالكامل
-      final recorder = ui.PictureRecorder();
-      final canvas = Canvas(recorder);
-      final numberOfScreens = (totalHeight / viewportHeight).ceil();
+        for (int i = 0; i < numOfScreenshots; i++) {
+          final targetScroll = i * viewportHeight;
 
-      for (int i = 0; i < numberOfScreens; i++) {
-        final targetScroll = i * viewportHeight;
+          await _scrollController!.animateTo(
+            targetScroll,
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeInOut,
+          );
 
-        // ✅ نحرك الصفحة لأسفل للالتقاط التدريجي
-        await scrollable.position.animateTo(
-          targetScroll,
+          await Future.delayed(const Duration(milliseconds: 350));
+
+          final image = await boundary.toImage(pixelRatio: 2.0);
+          final byteData =
+              await image.toByteData(format: ui.ImageByteFormat.png);
+          if (byteData == null) continue;
+
+          final codec =
+              await ui.instantiateImageCodec(byteData.buffer.asUint8List());
+          final frameInfo = await codec.getNextFrame();
+
+          final drawPosition = Offset(0, i * viewportHeight);
+          canvas.drawImage(frameInfo.image, drawPosition, Paint());
+
+          image.dispose();
+          frameInfo.image.dispose();
+        }
+
+        await _scrollController!.animateTo(
+          originalScrollPosition,
           duration: const Duration(milliseconds: 200),
           curve: Curves.easeInOut,
         );
 
-        // ✅ ننتظر ليتم تحديث الشاشة
-        await Future.delayed(const Duration(milliseconds: 300));
+        final fullImage = await recorder.endRecording().toImage(
+              boundary.size.width.ceil(),
+              totalHeight.ceil(),
+            );
 
-        // ✅ نلتقط صورة للجزء الظاهر
-        final image = await boundary.toImage(pixelRatio: 2.0);
-        final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
-        if (byteData == null) continue;
-
-        final codec =
-            await ui.instantiateImageCodec(byteData.buffer.asUint8List());
-        final frameInfo = await codec.getNextFrame();
-
-        // ✅ نرسم الجزء الذي تم التقاطه في الـ canvas
-        final drawPosition = Offset(0, i * viewportHeight);
-        canvas.drawImage(frameInfo.image, drawPosition, Paint());
-
-        // ✅ مسح محتوى التيكست فيلدز
-        if (hideTextFieldContent) {
-          _maskTextFields(boundary, canvas, drawPosition);
-        }
-
-        // ✅ إغلاق الموارد
-        image.dispose();
-        frameInfo.image.dispose();
+        await _saveImage(screenName, fullImage);
+        fullImage.dispose();
+      } else {
+        await _captureAndMaskScreenshot(screenName, boundary);
       }
-
-      // ✅ نعيد الصفحة إلى مكانها الأصلي بعد اللقطة
-      await scrollable.position.animateTo(
-        currentScrollPosition,
-        duration: const Duration(milliseconds: 200),
-        curve: Curves.easeInOut,
-      );
-
-      // ✅ نحول الصورة النهائية إلى صورة قابلة للحفظ
-      final fullImage = await recorder.endRecording().toImage(
-            boundary.size.width.ceil(),
-            totalHeight.ceil(),
-          );
-
-      // ✅ حفظ الصورة
-      await _saveImage(screenName, fullImage);
-
-      // ✅ تنظيف الذاكرة
-      fullImage.dispose();
     } catch (e) {
       debugPrint("❌ خطأ أثناء التقاط لقطة الشاشة الكاملة: $e");
       await _captureAndMaskScreenshot(screenName, boundary);
     }
   }
 
+  /// ✅ حفظ الصورة الملتقطة
   Future<void> _saveImage(String screenName, ui.Image image) async {
     final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
     if (byteData == null) return;
 
     final directory = await getExternalStorageDirectory();
-    if (directory == null) {
-      debugPrint("❌ خطأ: لم يتم العثور على مجلد التخزين.");
-      return;
-    }
+    if (directory == null) return;
 
     final folderPath = '${directory.path}/QubeScreenshots';
     final folder = Directory(folderPath);
@@ -154,10 +141,10 @@ class LayoutService {
     await file.writeAsBytes(byteData.buffer.asUint8List());
 
     debugPrint("✅ تم حفظ لقطة الشاشة: $filePath");
-
     image.dispose();
   }
 
+  /// ✅ إخفاء محتوى التيكست فيلد أثناء التقاط الصورة
   void _maskTextFields(
       RenderRepaintBoundary boundary, Canvas canvas, Offset offset) {
     void maskTextField(RenderObject object) {
@@ -166,7 +153,6 @@ class LayoutService {
         final adjustedOffset =
             MatrixUtils.transformPoint(transform, Offset.zero);
 
-        // ✅ نرسم مستطيل أبيض فوق التيكست فيلد
         final paint = Paint()
           ..color = const Color(0xFFF5F5F5)
           ..style = PaintingStyle.fill;
@@ -181,7 +167,6 @@ class LayoutService {
           paint,
         );
 
-        // ✅ نرسم خط أفقي بديلاً عن النص
         final linePaint = Paint()
           ..color = const Color(0xFF9E9E9E)
           ..strokeWidth = 2.0;
@@ -200,6 +185,7 @@ class LayoutService {
     boundary.visitChildren(maskTextField);
   }
 
+  /// ✅ التقاط صورة عادية في حال عدم وجود `ScrollController`
   Future<void> _captureAndMaskScreenshot(
       String screenName, RenderRepaintBoundary boundary) async {
     try {
@@ -210,12 +196,14 @@ class LayoutService {
     }
   }
 
+  /// ✅ استخراج مكونات اللاي أوت
   List<Map<String, dynamic>> _extractLayoutComponents(RenderBox renderObject) {
     final components = <Map<String, dynamic>>[];
     _visitRenderObject(renderObject, components);
     return components;
   }
 
+  /// ✅ زيارة جميع مكونات اللاي أوت وتحليلها
   void _visitRenderObject(
       RenderObject renderObject, List<Map<String, dynamic>> components) {
     if (renderObject is RenderBox) {
@@ -241,6 +229,7 @@ class LayoutService {
     return renderObject.runtimeType.toString().contains('EditableText');
   }
 
+  /// ✅ تسجيل بيانات اللاي أوت
   void _logLayoutData(Map<String, dynamic> layoutData) {
     debugPrint("📜 بيانات اللاي آوت: ${jsonEncode(layoutData)}");
   }
