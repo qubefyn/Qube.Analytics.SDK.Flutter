@@ -2,9 +2,10 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
-import 'package:flutter/material.dart';
+
 import 'package:flutter/rendering.dart';
 import 'package:path_provider/path_provider.dart';
+
 import '../qube_analytics_sdk.dart';
 import 'layout_analysis_service.dart';
 
@@ -53,7 +54,8 @@ class LayoutVideoCaptureService {
       _maskTextFieldContent(renderObject);
 
       final ui.Image image = await renderObject.toImage();
-      final ByteData? byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+      final ByteData? byteData =
+          await image.toByteData(format: ui.ImageByteFormat.png);
       if (byteData == null) {
         debugPrint("Error: Failed to convert image to byte data.");
         return;
@@ -76,7 +78,7 @@ class LayoutVideoCaptureService {
       }
 
       // Save the frame in the custom folder
-      final filePath = '$folderPath/frame_${_frameCount}.png';
+      final filePath = '$folderPath/frame_$_frameCount.png';
       final file = File(filePath);
       await file.writeAsBytes(pngBytes);
 

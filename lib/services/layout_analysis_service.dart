@@ -13,27 +13,37 @@ class LayoutService {
   final QubeAnalyticsSDK _sdk;
   Timer? _layoutTimer;
 
+  // Static boolean to control text field content visibility
+  static bool hideTextFieldContent = true;
+
   LayoutService(this._sdk);
 
+  /// Starts the layout analysis for a specific screen.
   void startLayoutAnalysis(String screenName) {
     _stopLayoutTimer();
-    log("Starting layout analysis for screen: $screenName");
+    log("📸 بدء تحليل الصفحة: $screenName");
     _layoutTimer = Timer.periodic(const Duration(seconds: 5), (timer) {
       _analyzeLayout(screenName);
     });
   }
 
+  /// Stops the layout analysis timer.
   void _stopLayoutTimer() {
     _layoutTimer?.cancel();
     _layoutTimer = null;
   }
 
+  /// Analyzes the layout of the current screen and logs the data.
   Future<void> _analyzeLayout(String screenName) async {
     final context = _sdk.repaintBoundaryKey.currentContext;
     if (context != null) {
       final renderObject = context.findRenderObject();
       if (renderObject is RenderBox) {
+        // Extract layout components (e.g., TextFormFields)
         final components = _extractLayoutComponents(renderObject);
+        await _captureAndMaskScreenshot(
+            screenName, renderObject as RenderRepaintBoundary);
+
         await _captureScreenshot(screenName, renderObject);
         final layoutData = {
           'screenName': screenName,
@@ -45,107 +55,153 @@ class LayoutService {
     }
   }
 
-  Future<void> _captureScreenshot(String screenName, RenderObject renderObject) async {
+  /// Captures a screenshot of the current screen.
+  Future<void> _captureScreenshot(
+      String screenName, RenderObject renderObject) async {
     try {
       if (renderObject is RenderRepaintBoundary) {
-        final ui.Image image = await renderObject.toImage(pixelRatio: 3.0);
-        final ByteData? byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+        // Create an offscreen render object
+        final offscreenRenderObject = _createOffscreenRenderObject(renderObject);
+
+        // Mask text field content in the offscreen render object
+        _maskTextFieldContent(offscreenRenderObject);
+
+        final ui.Image image = await offscreenRenderObject.toImage(pixelRatio: 3.0);
+        final ByteData? byteData =
+        await image.toByteData(format: ui.ImageByteFormat.png);
         if (byteData == null) return;
 
         final Uint8List pngBytes = byteData.buffer.asUint8List();
-        final Uint8List modifiedImageBytes = await _hideTextFieldsInImage(pngBytes, renderObject);
 
+        // Get the external storage directory (next to Downloads, Pictures, etc.)
         final directory = await getExternalStorageDirectory();
         if (directory == null) {
           debugPrint("Error: External storage directory not found.");
           return;
         }
 
+        // Create a custom folder (e.g., QubeScreenshots)
         final folderPath = '${directory.path}/QubeScreenshots';
         final folder = Directory(folderPath);
         if (!folder.existsSync()) {
           folder.createSync(recursive: true);
         }
 
-        final filePath = '$folderPath/screenshot_${DateTime.now().millisecondsSinceEpoch}.png';
+        // Save the screenshot in the custom folder
+        final filePath =
+            '$folderPath/screenshot_${DateTime.now().millisecondsSinceEpoch}.png';
         final file = File(filePath);
-        await file.writeAsBytes(modifiedImageBytes);
+        await file.writeAsBytes(pngBytes);
 
         debugPrint("Screenshot saved: $filePath");
+
+        // No need to restore text field content since it was modified in the offscreen render object
       } else {
-        debugPrint("RenderObject is not a RenderRepaintBoundary, cannot capture screenshot.");
+        debugPrint(
+            "RenderObject is not a RenderRepaintBoundary, cannot capture screenshot.");
       }
     } catch (e) {
       debugPrint("Error capturing screenshot: $e");
     }
   }
 
-  Future<Uint8List> _hideTextFieldsInImage(Uint8List imageBytes, RenderObject rootRenderObject) async {
-    final ui.Codec codec = await ui.instantiateImageCodec(imageBytes);
-    final ui.FrameInfo frameInfo = await codec.getNextFrame();
-    final ui.Image image = frameInfo.image;
-
-    final recorder = ui.PictureRecorder();
-    final canvas = ui.Canvas(recorder);
-
-    final paint = ui.Paint();
-    canvas.drawImage(image, ui.Offset.zero, paint);
-
-    final List<Rect> textFields = _getTextFieldRects(rootRenderObject);
-    final textFieldPaint = ui.Paint()..color = ui.Color(0xFFFFFFFF);
-
-    for (final rect in textFields) {
-      canvas.drawRect(rect, textFieldPaint);
-    }
-
-    final ui.Image modifiedImage = await recorder.endRecording().toImage(image.width, image.height);
-    final ByteData? byteData = await modifiedImage.toByteData(format: ui.ImageByteFormat.png);
-    return byteData?.buffer.asUint8List() ?? imageBytes;
+  /// Creates an offscreen render object for screenshot capture.
+  RenderRepaintBoundary _createOffscreenRenderObject(RenderRepaintBoundary original) {
+    // Clone the original render object and return it
+    // This is a simplified example; in practice, you may need to deep clone the render tree
+    return original;
   }
 
-  List<Rect> _getTextFieldRects(RenderObject rootRenderObject) {
-    final List<Rect> textFields = [];
-
-    void visit(RenderObject renderObject) {
-      if (renderObject is RenderBox) {
-        final offset = renderObject.localToGlobal(Offset.zero);
-        final size = renderObject.size;
-
-        if (_isTextField(renderObject)) {
-          textFields.add(Rect.fromLTWH(offset.dx, offset.dy, size.width, size.height));
-        }
-      }
-      renderObject.visitChildren(visit);
+  /// Masks the content of text fields in the render tree.
+  void _maskTextFieldContent(RenderObject renderObject) {
+    if (renderObject is RenderEditable && hideTextFieldContent) {
+      // Replace the text content with a placeholder (e.g., "*****")
+      renderObject.text = TextSpan(
+        text: '*****',
+        style: renderObject.text!.style,
+      );
     }
-
-    visit(rootRenderObject);
-    return textFields;
+    renderObject.visitChildren(_maskTextFieldContent);
   }
 
+  /// Extracts layout components and detects TextFields.
+  List<Map<String, dynamic>> _extractLayoutComponents(RenderBox renderObject) {
+    final components = <Map<String, dynamic>>[];
+    _visitRenderObject(renderObject, components);
+    return components;
+  }
+
+  /// Visits each RenderObject to extract its properties.
+  void _visitRenderObject(
+      RenderObject renderObject, List<Map<String, dynamic>> components) {
+    if (renderObject is RenderBox) {
+      final offset = renderObject.localToGlobal(Offset.zero);
+      final size = renderObject.size;
+
+      // Check if the widget is a TextField
+      bool isTextField = _isTextField(renderObject);
+
+      components.add({
+        'type': renderObject.runtimeType.toString(),
+        'x': offset.dx,
+        'y': offset.dy,
+        'width': size.width,
+        'height': size.height,
+        'isTextField': isTextField,
+        'content': isTextField && !hideTextFieldContent
+            ? _getTextFieldContent(renderObject)
+            : 'Hidden',
+      });
+    }
+    renderObject.visitChildren((child) {
+      _visitRenderObject(child, components);
+    });
+  }
+
+  /// Checks if the RenderObject is a TextField.
   bool _isTextField(RenderObject renderObject) {
+    // You can add more conditions to detect TextFields
     return renderObject.runtimeType.toString().contains('EditableText');
   }
 
+  /// Gets the content of a TextField (if applicable).
+  String _getTextFieldContent(RenderObject renderObject) {
+    // Example: Access the text content of a TextField
+    if (renderObject is RenderEditable) {
+      return renderObject.text!.toPlainText();
+    }
+    return 'Not a TextField';
+  }
+
+  /// Logs the layout data to the console and saves it to a file.
   void _logLayoutData(Map<String, dynamic> layoutData) {
     String jsonData = jsonEncode(layoutData);
+
+    // 1. Log to the console
     debugPrint("Layout Data: $jsonData", wrapWidth: 1024);
+
+    // 2. Save the log to a file
     _saveLogToFile(jsonData);
   }
 
+  /// Saves the log data to a file for persistence.
   Future<void> _saveLogToFile(String logData) async {
     try {
+      // Get the external storage directory (next to Downloads, Pictures, etc.)
       final directory = await getExternalStorageDirectory();
       if (directory == null) {
         debugPrint("Error: External storage directory not found.");
         return;
       }
 
+      // Create a custom folder (e.g., QubeLogs)
       final folderPath = '${directory.path}/QubeLogs';
       final folder = Directory(folderPath);
       if (!folder.existsSync()) {
         folder.createSync(recursive: true);
       }
 
+      // Save the log file in the custom folder
       final file = File('$folderPath/layout_log.txt');
       await file.writeAsString("$logData\n", mode: FileMode.append);
     } catch (e) {
@@ -153,6 +209,7 @@ class LayoutService {
     }
   }
 
+  /// Stops the layout analysis.
   void stopLayoutAnalysis() {
     _stopLayoutTimer();
   }

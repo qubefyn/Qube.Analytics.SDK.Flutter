@@ -3,14 +3,11 @@ library qube_analytics_sdk;
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'dart:ui';
 
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
-import 'package:path_provider/path_provider.dart';
 import 'package:qube_analytics_sdk/services/LayoutVideoCaptureService.dart';
 import 'package:qube_analytics_sdk/services/behavior_data_service.dart';
 import 'package:qube_analytics_sdk/services/layout_analysis_service.dart';
@@ -334,89 +331,52 @@ abstract class ScreenTracker {
 }
 
 class QubeNavigatorObserver extends NavigatorObserver {
-  final GlobalKey repaintBoundaryKey; // ✅ مفتاح الـ RepaintBoundary
-  Timer? _screenshotTimer; // ✅ مؤقت لأخذ لقطة كل 5 ثوانٍ
   final QubeAnalyticsSDK _sdk;
-  QubeNavigatorObserver(this.repaintBoundaryKey, this._sdk);
+
+  QubeNavigatorObserver(this._sdk);
 
   @override
   void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) {
     super.didPush(route, previousRoute);
 
-    final sdk = QubeAnalyticsSDK();
     final screenName = _extractScreenName(route);
 
-    sdk.trackScreenView(ScreenViewData(
+    _sdk.trackScreenView(ScreenViewData(
       screenId: screenName.hashCode.toString(),
       screenPath: screenName,
       screenName: screenName,
       visitDateTime: DateTime.now(),
-      sessionId: sdk.sessionId,
+      sessionId: _sdk.sessionId,
     ));
+
+    // ✅ إيقاف التقاط الشاشة للصفحة السابقة (إذا وُجدت)
+    _sdk.layoutService.stopLayoutAnalysis();
+
+    // ✅ بدء التقاط الشاشة للصفحة الجديدة
     _sdk.layoutService.startLayoutAnalysis(screenName);
-    // ✅ بدء أخذ اللقطات بشكل متكرر
-    // _startScreenshotTimer(screenName);
   }
 
   @override
   void didPop(Route<dynamic> route, Route<dynamic>? previousRoute) {
     super.didPop(route, previousRoute);
-    _sdk.layoutService.stopLayoutAnalysis();
-    _stopScreenshotTimer(); // ✅ إيقاف المؤقت عند الخروج من الشاشة
+
+    final screenName = _extractScreenName(previousRoute);
+
+    _sdk.trackScreenView(ScreenViewData(
+      screenId: screenName.hashCode.toString(),
+      screenPath: screenName,
+      screenName: screenName,
+      visitDateTime: DateTime.now(),
+      sessionId: _sdk.sessionId,
+    ));
+
+    // ✅ إعادة تشغيل التقاط الشاشة بعد الرجوع إلى الصفحة السابقة
+    _sdk.layoutService.startLayoutAnalysis(screenName);
   }
 
-  /// ✅ استخراج اسم الشاشة
-  String _extractScreenName(Route<dynamic> route) {
+  /// ✅ استخراج اسم الشاشة بشكل آمن
+  String _extractScreenName(Route<dynamic>? route) {
+    if (route == null) return "Unknown";
     return route.settings.name ?? route.runtimeType.toString();
-  }
-
-  /// ✅ بدء المؤقت لأخذ لقطة كل 5 ثوانٍ
-  void _startScreenshotTimer(String screenName) {
-    _stopScreenshotTimer(); // التأكد من عدم تشغيل مؤقت آخر
-    _screenshotTimer = Timer.periodic(const Duration(seconds: 5), (timer) {
-      _captureScreenshot(screenName);
-    });
-  }
-
-  /// ✅ إيقاف المؤقت عند الخروج من الشاشة
-  void _stopScreenshotTimer() {
-    _screenshotTimer?.cancel();
-    _screenshotTimer = null;
-  }
-
-  /// ✅ التقاط لقطة الشاشة وحفظها
-  Future<void> _captureScreenshot(String routeName) async {
-    try {
-      final boundary = repaintBoundaryKey.currentContext?.findRenderObject()
-          as RenderRepaintBoundary?;
-
-      if (boundary != null) {
-        final image = await boundary.toImage(pixelRatio: 2.0);
-        final byteData = await image.toByteData(format: ImageByteFormat.png);
-        final pngBytes = byteData?.buffer.asUint8List();
-
-        if (pngBytes != null) {
-          final directory = await getApplicationDocumentsDirectory();
-          final screenshotsDir = Directory('${directory.path}/screenshots');
-
-          if (!screenshotsDir.existsSync()) {
-            screenshotsDir.createSync(recursive: true);
-          }
-
-          final timestamp = DateTime.now().millisecondsSinceEpoch;
-          final filePath = '${screenshotsDir.path}/$routeName-$timestamp.png';
-          final file = File(filePath);
-          await file.writeAsBytes(pngBytes);
-
-          debugPrint('✅ Screenshot saved: $filePath');
-        } else {
-          debugPrint('❌ Failed to convert image to bytes.');
-        }
-      } else {
-        debugPrint('❌ Render boundary is null. Screenshot not captured.');
-      }
-    } catch (e) {
-      debugPrint('❌ Error capturing screenshot: $e');
-    }
   }
 }
