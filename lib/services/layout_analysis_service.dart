@@ -1,10 +1,11 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:developer';
 import 'dart:io';
 import 'dart:ui' as ui;
 
-import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:flutter/widgets.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:qube_analytics_sdk/qube_analytics_sdk.dart';
 
@@ -17,7 +18,7 @@ class LayoutService {
 
   void startLayoutAnalysis(String screenName) {
     _stopLayoutTimer();
-    debugPrint("📸 بدء تحليل الشاشة: $screenName");
+    log("📸 بدء تحليل الصفحة: $screenName");
     _layoutTimer = Timer.periodic(const Duration(seconds: 5), (timer) {
       _analyzeLayout(screenName);
     });
@@ -34,7 +35,7 @@ class LayoutService {
       final renderObject = context.findRenderObject();
       if (renderObject is RenderRepaintBoundary) {
         final components = _extractLayoutComponents(renderObject);
-        await _captureFullScreenshot(screenName, renderObject);
+        await _captureFullScreenshot(screenName, renderObject, context);
 
         final layoutData = {
           'screenName': screenName,
@@ -46,102 +47,224 @@ class LayoutService {
     }
   }
 
-  /// ✅ **التقاط لقطة شاشة كاملة بدون تحريك الصفحة**
-  Future<void> _captureFullScreenshot(
+  Future<void> _captureFullScreenshot(String screenName,
+      RenderRepaintBoundary boundary, BuildContext context) async {
+    try {
+      ScrollableState? scrollable = Scrollable.of(context);
+
+      final ScrollMetrics metrics = scrollable.position;
+      final double totalHeight =
+          metrics.maxScrollExtent + metrics.viewportDimension;
+      final double viewportHeight = metrics.viewportDimension;
+      final double originalOffset = metrics.pixels;
+
+      final recorder = ui.PictureRecorder();
+      final canvas = Canvas(recorder);
+
+      int segments = (totalHeight / viewportHeight).ceil();
+
+      for (int i = 0; i < segments; i++) {
+        final double segmentOffset = i * viewportHeight;
+
+        scrollable.position.jumpTo(segmentOffset);
+        await Future.delayed(const Duration(milliseconds: 100));
+
+        final image = await boundary.toImage(pixelRatio: 1.0);
+        final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+        if (byteData == null) continue;
+
+        final codec =
+            await ui.instantiateImageCodec(byteData.buffer.asUint8List());
+        final frameInfo = await codec.getNextFrame();
+
+        canvas.drawImage(frameInfo.image, Offset(0, segmentOffset), Paint());
+
+        image.dispose();
+        frameInfo.image.dispose();
+      }
+
+      scrollable.position.jumpTo(originalOffset);
+
+      // ✅ استبدلنا `final` بـ `late`
+      late ui.Image fullImage;
+      fullImage = await recorder.endRecording().toImage(
+            boundary.size.width.ceil(),
+            totalHeight.ceil(),
+          );
+
+      if (hideTextFieldContent) {
+        final maskRecorder = ui.PictureRecorder();
+        final maskCanvas = Canvas(maskRecorder);
+
+        final fullImageBytes =
+            await fullImage.toByteData(format: ui.ImageByteFormat.png);
+        if (fullImageBytes != null) {
+          final codec = await ui
+              .instantiateImageCodec(fullImageBytes.buffer.asUint8List());
+          final frameInfo = await codec.getNextFrame();
+          maskCanvas.drawImage(frameInfo.image, Offset.zero, Paint());
+
+          void maskTextFields(RenderObject object, Offset parentOffset) {
+            if (object is RenderEditable) {
+              final transform = object.getTransformTo(boundary);
+              final offset = MatrixUtils.transformPoint(transform, Offset.zero);
+              final double adjustedY = offset.dy - originalOffset;
+
+              final paint = Paint()
+                ..color = const Color(0xFFF5F5F5)
+                ..style = PaintingStyle.fill;
+
+              maskCanvas.drawRect(
+                Rect.fromLTWH(offset.dx, adjustedY, object.size.width,
+                    object.size.height),
+                paint,
+              );
+
+              final linePaint = Paint()
+                ..color = const Color(0xFF9E9E9E)
+                ..strokeWidth = 2.0;
+
+              maskCanvas.drawLine(
+                Offset(offset.dx + 4, adjustedY + object.size.height / 2),
+                Offset(offset.dx + object.size.width - 4,
+                    adjustedY + object.size.height / 2),
+                linePaint,
+              );
+            }
+
+            object.visitChildren((child) {
+              maskTextFields(child, parentOffset);
+            });
+          }
+
+          maskTextFields(boundary, Offset.zero);
+
+          fullImage = await maskRecorder.endRecording().toImage(
+                boundary.size.width.ceil(),
+                totalHeight.ceil(),
+              );
+        }
+      }
+
+      final finalImageBytes =
+          await fullImage.toByteData(format: ui.ImageByteFormat.png);
+      if (finalImageBytes == null) return;
+
+      final directory = await getExternalStorageDirectory();
+      if (directory == null) {
+        log("❌ خطأ: لم يتم العثور على مجلد التخزين.");
+        return;
+      }
+
+      final folderPath = '${directory.path}/QubeScreenshots';
+      final folder = Directory(folderPath);
+      if (!folder.existsSync()) {
+        folder.createSync(recursive: true);
+      }
+
+      final filePath =
+          '$folderPath/fullscreenshot_${DateTime.now().millisecondsSinceEpoch}.png';
+      final file = File(filePath);
+      await file.writeAsBytes(finalImageBytes.buffer.asUint8List());
+
+      log("✅ تم حفظ لقطة الشاشة الكاملة: $filePath");
+
+      fullImage.dispose();
+    } catch (e) {
+      log("❌ خطأ أثناء التقاط لقطة الشاشة الكاملة: $e");
+      await _captureAndMaskScreenshot(screenName, boundary);
+    }
+  }
+
+  Future<void> _captureAndMaskScreenshot(
       String screenName, RenderRepaintBoundary boundary) async {
     try {
-      // التقاط الصورة باستخدام `toImage`
-      final ui.Image image = await boundary.toImage(pixelRatio: 2.0);
+      final originalImage = await boundary.toImage(pixelRatio: 1.0);
+      final byteData =
+          await originalImage.toByteData(format: ui.ImageByteFormat.png);
+      if (byteData == null) return;
 
-      // ✅ إخفاء محتوى التيكست فيلد داخل الصورة
-      final maskedImage = await _maskTextFields(image, boundary);
+      final codec =
+          await ui.instantiateImageCodec(byteData.buffer.asUint8List());
+      final frameInfo = await codec.getNextFrame();
+      final image = frameInfo.image;
 
-      // ✅ حفظ الصورة
-      await _saveImage(screenName, maskedImage);
+      final recorder = ui.PictureRecorder();
+      final canvas = Canvas(recorder);
+      final size = boundary.size;
 
-      debugPrint("✅ تم التقاط الشاشة كاملة بنجاح!");
-    } catch (e) {
-      debugPrint("❌ خطأ أثناء التقاط لقطة الشاشة الكاملة: $e");
-    }
-  }
+      canvas.drawImage(image, Offset.zero, Paint());
 
-  /// ✅ **إخفاء محتوى TextField داخل الصورة دون تغيير واجهة المستخدم**
-  Future<ui.Image> _maskTextFields(
-      ui.Image originalImage, RenderRepaintBoundary boundary) async {
-    final recorder = ui.PictureRecorder();
-    final canvas = Canvas(recorder);
-    final paint = Paint();
+      if (hideTextFieldContent) {
+        void maskTextFields(RenderObject object, Offset parentOffset) {
+          if (object is RenderEditable) {
+            final transform = object.getTransformTo(boundary);
+            final offset = MatrixUtils.transformPoint(transform, Offset.zero);
 
-    // ✅ رسم الصورة الأصلية أولاً
-    canvas.drawImage(originalImage, Offset.zero, paint);
+            final paint = Paint()
+              ..color = const Color(0xFFF5F5F5)
+              ..style = PaintingStyle.fill;
 
-    // ✅ العثور على حقول النص وإخفائها
-    void maskTextField(RenderObject object) {
-      if (object is RenderEditable) {
-        final transform = object.getTransformTo(boundary);
-        final offset = MatrixUtils.transformPoint(transform, Offset.zero);
+            canvas.drawRect(
+                Rect.fromLTWH(offset.dx, offset.dy, object.size.width,
+                    object.size.height),
+                paint);
 
-        // ✅ رسم مستطيل أبيض فوق النص
-        final rectPaint = Paint()
-          ..color = Colors.white
-          ..style = PaintingStyle.fill;
+            final linePaint = Paint()
+              ..color = const Color(0xFF9E9E9E)
+              ..strokeWidth = 2.0;
 
-        canvas.drawRect(
-          Rect.fromLTWH(
-              offset.dx, offset.dy, object.size.width, object.size.height),
-          rectPaint,
-        );
+            canvas.drawLine(
+                Offset(offset.dx + 4, offset.dy + object.size.height / 2),
+                Offset(offset.dx + object.size.width - 4,
+                    offset.dy + object.size.height / 2),
+                linePaint);
+          }
 
-        // ✅ رسم خط أفقي بديل عن النص
-        final linePaint = Paint()
-          ..color = Colors.black
-          ..strokeWidth = 2.0;
+          object.visitChildren((child) {
+            maskTextFields(child, parentOffset);
+          });
+        }
 
-        canvas.drawLine(
-          Offset(offset.dx + 4, offset.dy + object.size.height / 2),
-          Offset(offset.dx + object.size.width - 4,
-              offset.dy + object.size.height / 2),
-          linePaint,
-        );
+        maskTextFields(boundary, Offset.zero);
       }
-      object.visitChildren(maskTextField);
+
+      final maskedImage = await recorder.endRecording().toImage(
+            size.width.ceil(),
+            size.height.ceil(),
+          );
+
+      final maskedByteData =
+          await maskedImage.toByteData(format: ui.ImageByteFormat.png);
+      if (maskedByteData == null) return;
+
+      final directory = await getExternalStorageDirectory();
+      if (directory == null) {
+        log("❌ خطأ: لم يتم العثور على مجلد التخزين.");
+        return;
+      }
+
+      final folderPath = '${directory.path}/QubeScreenshots';
+      final folder = Directory(folderPath);
+      if (!folder.existsSync()) {
+        folder.createSync(recursive: true);
+      }
+
+      final filePath =
+          '$folderPath/screenshot_${DateTime.now().millisecondsSinceEpoch}.png';
+      final file = File(filePath);
+      await file.writeAsBytes(maskedByteData.buffer.asUint8List());
+
+      log("✅ تم حفظ لقطة الشاشة: $filePath");
+
+      originalImage.dispose();
+      image.dispose();
+      maskedImage.dispose();
+    } catch (e) {
+      log("❌ خطأ أثناء التقاط لقطة الشاشة: $e");
     }
-
-    boundary.visitChildren(maskTextField);
-
-    // ✅ تحويل الصورة المعدلة إلى `ui.Image`
-    return await recorder.endRecording().toImage(
-          originalImage.width,
-          originalImage.height,
-        );
   }
 
-  /// ✅ **حفظ الصورة في التخزين**
-  Future<void> _saveImage(String screenName, ui.Image image) async {
-    final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
-    if (byteData == null) return;
-
-    final directory = await getExternalStorageDirectory();
-    if (directory == null) {
-      debugPrint("❌ خطأ: لم يتم العثور على مجلد التخزين.");
-      return;
-    }
-
-    final folderPath = '${directory.path}/QubeScreenshots';
-    final folder = Directory(folderPath);
-    if (!folder.existsSync()) {
-      folder.createSync(recursive: true);
-    }
-
-    final filePath =
-        '$folderPath/screenshot_${DateTime.now().millisecondsSinceEpoch}.png';
-    final file = File(filePath);
-    await file.writeAsBytes(byteData.buffer.asUint8List());
-
-    debugPrint("✅ تم حفظ لقطة الشاشة: $filePath");
-  }
-
-  /// ✅ **استخراج بيانات مكونات الشاشة**
   List<Map<String, dynamic>> _extractLayoutComponents(RenderBox renderObject) {
     final components = <Map<String, dynamic>>[];
     _visitRenderObject(renderObject, components);
@@ -153,6 +276,7 @@ class LayoutService {
     if (renderObject is RenderBox) {
       final offset = renderObject.localToGlobal(Offset.zero);
       final size = renderObject.size;
+
       bool isTextField = _isTextField(renderObject);
 
       components.add({
@@ -162,6 +286,9 @@ class LayoutService {
         'width': size.width,
         'height': size.height,
         'isTextField': isTextField,
+        'content': isTextField && !hideTextFieldContent
+            ? _getTextFieldContent(renderObject)
+            : 'Hidden',
       });
     }
     renderObject.visitChildren((child) {
@@ -173,8 +300,35 @@ class LayoutService {
     return renderObject.runtimeType.toString().contains('EditableText');
   }
 
+  String _getTextFieldContent(RenderObject renderObject) {
+    if (renderObject is RenderEditable) {
+      return renderObject.text?.toPlainText() ?? 'Empty TextField';
+    }
+    return 'Not a TextField';
+  }
+
   void _logLayoutData(Map<String, dynamic> layoutData) {
-    debugPrint("📜 بيانات الشاشة: ${jsonEncode(layoutData)}");
+    String jsonData = jsonEncode(layoutData);
+    log("📜 بيانات اللاي أوت: $jsonData");
+    _saveLogToFile(jsonData);
+  }
+
+  Future<void> _saveLogToFile(String logData) async {
+    try {
+      final directory = await getExternalStorageDirectory();
+      if (directory == null) return;
+
+      final folderPath = '${directory.path}/QubeLogs';
+      final folder = Directory(folderPath);
+      if (!folder.existsSync()) {
+        folder.createSync(recursive: true);
+      }
+
+      final file = File('$folderPath/layout_log.txt');
+      await file.writeAsString("$logData\n", mode: FileMode.append);
+    } catch (e) {
+      log("❌ خطأ أثناء حفظ السجل: $e");
+    }
   }
 
   void stopLayoutAnalysis() {
