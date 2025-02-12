@@ -118,7 +118,8 @@ class QubeAnalyticsSDK {
   ScrollController? _scrollController;
 
   final GlobalKey repaintBoundaryKey = GlobalKey();
-  Future<void> initialize({String? userId}) async {
+  Future<void> initialize(
+      {String? userId, ScrollController? scrollController}) async {
     sessionId = _generateUniqueId();
     deviceId = await _initializeDeviceId();
     final generatedUserId = userId ?? _generateUniqueId();
@@ -126,6 +127,8 @@ class QubeAnalyticsSDK {
     print("SDK Initialized: ${jsonEncode(userData)}");
     behaviorDataService = BehaviorDataService(this);
     layoutService = LayoutService(this);
+    _scrollController = scrollController;
+
     layoutService.setScrollController(_scrollController);
     videoCaptureService = LayoutVideoCaptureService(this);
     FlutterError.onError = (FlutterErrorDetails details) {
