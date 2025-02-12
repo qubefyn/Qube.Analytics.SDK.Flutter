@@ -16,7 +16,7 @@ class LayoutService {
 
   LayoutService(this._sdk);
 
-  void setScrollController(ScrollController controller) {
+  void setScrollController(ScrollController? controller) {
     _scrollController = controller;
   }
 
