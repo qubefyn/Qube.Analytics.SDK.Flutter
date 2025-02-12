@@ -36,7 +36,7 @@ class LayoutService {
       if (renderObject is RenderBox) {
         final components = _extractLayoutComponents(renderObject);
         await _captureFullScreenshot(
-            screenName, renderObject as RenderRepaintBoundary);
+            screenName, renderObject as RenderRepaintBoundary, context);
 
         final layoutData = {
           'screenName': screenName,
@@ -48,159 +48,166 @@ class LayoutService {
     }
   }
 
-  Future<void> _captureFullScreenshot(
-      String screenName, RenderRepaintBoundary boundary) async {
+  Future<void> _captureFullScreenshot(String screenName,
+      RenderRepaintBoundary boundary, BuildContext context) async {
     try {
-      // Find ScrollableState using BuildContext
-      ScrollableState? scrollable;
-      if (_sdk.repaintBoundaryKey.currentContext != null) {
-        // Find the nearest Scrollable ancestor
-        scrollable = Scrollable.of(_sdk.repaintBoundaryKey.currentContext!);
-      }
+      // Find the nearest SingleChildScrollView or ListView
+      ScrollableState? scrollable = Scrollable.of(context);
 
-      if (scrollable != null) {
-        // Save original scroll position
-        final originalOffset = scrollable.position.pixels;
+      // Get the RenderBox of the scrollable content
+      final RenderBox? contentBox =
+          scrollable.context.findRenderObject() as RenderBox?;
+      if (contentBox == null) return;
 
-        // Get full scroll extent
-        final maxScrollExtent = scrollable.position.maxScrollExtent;
-        final viewportDimension = scrollable.position.viewportDimension;
+      // Get the total height of the content
+      final totalHeight = contentBox.size.height;
+      final viewportHeight = scrollable.position.viewportDimension;
+      final currentScrollPosition = scrollable.position.pixels;
 
-        // Calculate total height
-        final totalHeight = maxScrollExtent + viewportDimension;
+      // Create a recorder for the full content
+      final recorder = ui.PictureRecorder();
+      final canvas = Canvas(recorder);
 
-        // Create a larger recorder for full content
-        final recorder = ui.PictureRecorder();
-        final canvas = Canvas(recorder);
+      // Calculate number of segments needed
+      final numberOfSegments = (totalHeight / viewportHeight).ceil();
 
-        // Capture content in segments
-        double currentScroll = 0;
-        while (currentScroll < totalHeight) {
-          // Scroll to position
-          await scrollable.position.animateTo(
-            currentScroll,
-            duration: const Duration(milliseconds: 100),
-            curve: Curves.linear,
-          );
+      for (int i = 0; i < numberOfSegments; i++) {
+        // Calculate scroll position for this segment
+        final targetScroll = i * viewportHeight;
 
-          // Allow frame to be rendered
-          await Future.delayed(const Duration(milliseconds: 100));
-
-          // Capture current viewport
-          final image = await boundary.toImage(pixelRatio: 1.0);
-          final byteData =
-              await image.toByteData(format: ui.ImageByteFormat.png);
-          if (byteData == null) continue;
-
-          // Convert to image and draw
-          final codec =
-              await ui.instantiateImageCodec(byteData.buffer.asUint8List());
-          final frameInfo = await codec.getNextFrame();
-
-          // Draw at appropriate vertical position
-          canvas.drawImage(
-            frameInfo.image,
-            Offset(0, currentScroll),
-            Paint(),
-          );
-
-          // Mask text fields in this segment
-          if (hideTextFieldContent) {
-            void maskTextFields(RenderObject object, Offset parentOffset) {
-              if (object is RenderEditable) {
-                final transform = object.getTransformTo(boundary);
-                final offset =
-                    MatrixUtils.transformPoint(transform, Offset.zero);
-
-                // Adjust vertical position based on current scroll
-                final adjustedOffset =
-                    Offset(offset.dx, offset.dy + currentScroll);
-
-                // Draw masking rectangle
-                final paint = Paint()
-                  ..color = const Color(0xFFF5F5F5)
-                  ..style = PaintingStyle.fill;
-
-                canvas.drawRect(
-                    Rect.fromLTWH(adjustedOffset.dx, adjustedOffset.dy,
-                        object.size.width, object.size.height),
-                    paint);
-
-                // Draw indicator line
-                final linePaint = Paint()
-                  ..color = const Color(0xFF9E9E9E)
-                  ..strokeWidth = 2.0;
-
-                canvas.drawLine(
-                    Offset(adjustedOffset.dx + 4,
-                        adjustedOffset.dy + object.size.height / 2),
-                    Offset(adjustedOffset.dx + object.size.width - 4,
-                        adjustedOffset.dy + object.size.height / 2),
-                    linePaint);
-              }
-
-              object.visitChildren((child) {
-                maskTextFields(child, parentOffset);
-              });
-            }
-
-            maskTextFields(boundary, Offset(0, currentScroll));
-          }
-
-          // Clean up
-          image.dispose();
-          frameInfo.image.dispose();
-
-          // Move to next segment
-          currentScroll += viewportDimension;
-        }
-
-        // Restore original scroll position
+        // Scroll to position
         await scrollable.position.animateTo(
-          originalOffset,
+          targetScroll,
           duration: const Duration(milliseconds: 100),
           curve: Curves.linear,
         );
 
-        // Convert final picture to image
-        final fullImage = await recorder.endRecording().toImage(
-              boundary.size.width.ceil(),
-              totalHeight.ceil(),
-            );
+        // Wait for rendering
+        await Future.delayed(const Duration(milliseconds: 200));
 
-        // Save the image
-        final byteData =
-            await fullImage.toByteData(format: ui.ImageByteFormat.png);
-        if (byteData == null) return;
+        // Capture segment
+        final image = await boundary.toImage(pixelRatio: 2.0);
+        final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+        if (byteData == null) continue;
 
-        final directory = await getExternalStorageDirectory();
-        if (directory == null) {
-          debugPrint("❌ خطأ: لم يتم العثور على مجلد التخزين.");
-          return;
+        // Convert to image
+        final codec =
+            await ui.instantiateImageCodec(byteData.buffer.asUint8List());
+        final frameInfo = await codec.getNextFrame();
+
+        // Calculate position to draw this segment
+        final drawPosition = Offset(0, i * viewportHeight);
+
+        // Draw segment
+        canvas.drawImage(frameInfo.image, drawPosition, Paint());
+
+        // Mask text fields for this segment
+        if (hideTextFieldContent) {
+          await _maskTextFieldsInSegment(
+            boundary,
+            canvas,
+            drawPosition,
+            scrollable.position.pixels,
+          );
         }
-
-        final folderPath = '${directory.path}/QubeScreenshots';
-        final folder = Directory(folderPath);
-        if (!folder.existsSync()) {
-          folder.createSync(recursive: true);
-        }
-
-        final filePath =
-            '$folderPath/fullscreenshot_${DateTime.now().millisecondsSinceEpoch}.png';
-        final file = File(filePath);
-        await file.writeAsBytes(byteData.buffer.asUint8List());
-
-        debugPrint("✅ تم حفظ لقطة الشاشة الكاملة: $filePath");
 
         // Cleanup
-        fullImage.dispose();
-      } else {
-        // Fallback to normal screenshot if no scrollable found
-        await _captureAndMaskScreenshot(screenName, boundary);
+        image.dispose();
+        frameInfo.image.dispose();
       }
+
+      // Restore original scroll position
+      await scrollable.position.animateTo(
+        currentScrollPosition,
+        duration: const Duration(milliseconds: 100),
+        curve: Curves.linear,
+      );
+
+      // Convert final picture to image
+      final fullImage = await recorder.endRecording().toImage(
+            boundary.size.width.ceil(),
+            totalHeight.ceil(),
+          );
+
+      // Save the image
+      final byteData =
+          await fullImage.toByteData(format: ui.ImageByteFormat.png);
+      if (byteData == null) return;
+
+      final directory = await getExternalStorageDirectory();
+      if (directory == null) {
+        debugPrint("❌ خطأ: لم يتم العثور على مجلد التخزين.");
+        return;
+      }
+
+      final folderPath = '${directory.path}/QubeScreenshots';
+      final folder = Directory(folderPath);
+      if (!folder.existsSync()) {
+        folder.createSync(recursive: true);
+      }
+
+      final filePath =
+          '$folderPath/fullscreenshot_${DateTime.now().millisecondsSinceEpoch}.png';
+      final file = File(filePath);
+      await file.writeAsBytes(byteData.buffer.asUint8List());
+
+      debugPrint("✅ تم حفظ لقطة الشاشة الكاملة: $filePath");
+
+      // Cleanup
+      fullImage.dispose();
     } catch (e) {
       debugPrint("❌ خطأ أثناء التقاط لقطة الشاشة الكاملة: $e");
+      // Fallback to normal screenshot
+      await _captureAndMaskScreenshot(screenName, boundary);
     }
+  }
+
+  Future<void> _maskTextFieldsInSegment(
+    RenderRepaintBoundary boundary,
+    Canvas canvas,
+    Offset segmentOffset,
+    double scrollPosition,
+  ) async {
+    void maskTextField(RenderObject object) {
+      if (object is RenderEditable) {
+        try {
+          final transform = object.getTransformTo(boundary);
+          final offset = MatrixUtils.transformPoint(transform, Offset.zero);
+
+          // Adjust for scroll position and segment offset
+          final adjustedOffset =
+              Offset(offset.dx, offset.dy - scrollPosition + segmentOffset.dy);
+
+          // Draw masking rectangle
+          final paint = Paint()
+            ..color = const Color(0xFFF5F5F5)
+            ..style = PaintingStyle.fill;
+
+          canvas.drawRect(
+              Rect.fromLTWH(adjustedOffset.dx, adjustedOffset.dy,
+                  object.size.width, object.size.height),
+              paint);
+
+          // Draw indicator line
+          final linePaint = Paint()
+            ..color = const Color(0xFF9E9E9E)
+            ..strokeWidth = 2.0;
+
+          canvas.drawLine(
+              Offset(adjustedOffset.dx + 4,
+                  adjustedOffset.dy + object.size.height / 2),
+              Offset(adjustedOffset.dx + object.size.width - 4,
+                  adjustedOffset.dy + object.size.height / 2),
+              linePaint);
+        } catch (e) {
+          debugPrint("❌ خطأ أثناء إخفاء حقل النص: $e");
+        }
+      }
+
+      object.visitChildren(maskTextField);
+    }
+
+    boundary.visitChildren(maskTextField);
   }
 
   Future<void> _captureAndMaskScreenshot(
