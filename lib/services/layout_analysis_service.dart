@@ -13,8 +13,12 @@ class LayoutService {
   final QubeAnalyticsSDK _sdk;
   Timer? _layoutTimer;
   static bool hideTextFieldContent = true;
+  ScrollController? _scrollController;
 
   LayoutService(this._sdk);
+  void setScrollController(ScrollController? controller) {
+    _scrollController = controller;
+  }
 
   void startLayoutAnalysis(String screenName) {
     _stopLayoutTimer();
