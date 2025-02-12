@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:developer';
 import 'dart:io';
+import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/rendering.dart';
@@ -47,81 +48,39 @@ class LayoutService {
     }
   }
 
-  Future<void> _captureAndMaskScreenshot(
-      String screenName, RenderRepaintBoundary boundary) async {
+  Future<void> _captureAndMaskScreenshot(String screenName, RenderRepaintBoundary boundary) async {
     try {
-      // Take the initial screenshot
-      final originalImage = await boundary.toImage(pixelRatio: 1.0);
-      final byteData =
-      await originalImage.toByteData(format: ui.ImageByteFormat.png);
-      if (byteData == null) return;
+      final context = _sdk.repaintBoundaryKey.currentContext;
+      if (context == null) return;
 
-      // Create a bitmap from the screenshot
-      final codec =
-      await ui.instantiateImageCodec(byteData.buffer.asUint8List());
-      final frameInfo = await codec.getNextFrame();
-      final image = frameInfo.image;
+      final renderObject = context.findRenderObject();
+      if (renderObject == null) return;
 
-      // Create a new image with masked text fields
-      final recorder = ui.PictureRecorder();
-      final canvas = Canvas(recorder);
-      final size = boundary.size;
+      // Find the correct boundary for capturing the full scrollable content
+      RenderRepaintBoundary? targetBoundary = boundary;
 
-      // Draw the original image
-      canvas.drawImage(image, Offset.zero, Paint());
-
-      // Find and mask text fields
-      if (hideTextFieldContent) {
-        void maskTextFields(RenderObject object, Offset parentOffset) {
-          if (object is RenderEditable) {
-            final transform = object.getTransformTo(boundary);
-            final offset = MatrixUtils.transformPoint(transform, Offset.zero);
-
-            // Draw a rectangle over the text field
-            final paint = Paint()
-              ..color = const Color(0xFFF5F5F5)
-              ..style = PaintingStyle.fill;
-
-            canvas.drawRect(
-                Rect.fromLTWH(offset.dx, offset.dy, object.size.width,
-                    object.size.height),
-                paint);
-
-            // Draw a line to indicate masked content
-            final linePaint = Paint()
-              ..color = const Color(0xFF9E9E9E)
-              ..strokeWidth = 2.0;
-
-            canvas.drawLine(
-                Offset(offset.dx + 4, offset.dy + object.size.height / 2),
-                Offset(offset.dx + object.size.width - 4,
-                    offset.dy + object.size.height / 2),
-                linePaint);
-          }
-
-          object.visitChildren((child) {
-            maskTextFields(child, parentOffset);
-          });
+      void findScrollableBoundary(RenderObject obj) {
+        if (obj is RenderRepaintBoundary) {
+          targetBoundary = obj; // Assign to the last found RepaintBoundary
         }
-
-        maskTextFields(boundary, Offset.zero);
+        obj.visitChildren(findScrollableBoundary);
       }
 
-      // Convert to final image
-      final picture = recorder.endRecording();
-      final maskedImage =
-      await picture.toImage(size.width.ceil(), size.height.ceil());
+      renderObject.visitChildren(findScrollableBoundary);
 
-      final maskedByteData =
-      await maskedImage.toByteData(format: ui.ImageByteFormat.png);
-      if (maskedByteData == null) return;
+      if (targetBoundary == null) {
+        debugPrint("❌ No valid boundary found for capturing.");
+        return;
+      }
+
+      // Capture the full image
+      final ui.Image image = await targetBoundary!.toImage(pixelRatio: 1.0);
+      final ByteData? byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+      if (byteData == null) return;
 
       // Save the image
       final directory = await getExternalStorageDirectory();
-      if (directory == null) {
-        debugPrint("❌ خطأ: لم يتم العثور على مجلد التخزين.");
-        return;
-      }
+      if (directory == null) return;
 
       final folderPath = '${directory.path}/QubeScreenshots';
       final folder = Directory(folderPath);
@@ -129,17 +88,14 @@ class LayoutService {
         folder.createSync(recursive: true);
       }
 
-      final filePath =
-          '$folderPath/screenshot_${DateTime.now().millisecondsSinceEpoch}.png';
+      final filePath = '$folderPath/screenshot_${DateTime.now().millisecondsSinceEpoch}.png';
       final file = File(filePath);
-      await file.writeAsBytes(maskedByteData.buffer.asUint8List());
+      await file.writeAsBytes(byteData.buffer.asUint8List());
 
-      debugPrint("✅ تم حفظ لقطة الشاشة: $filePath");
+      debugPrint("✅ تم حفظ لقطة الشاشة الكاملة: $filePath");
 
       // Cleanup
-      originalImage.dispose();
       image.dispose();
-      maskedImage.dispose();
     } catch (e) {
       debugPrint("❌ خطأ أثناء التقاط لقطة الشاشة: $e");
     }
