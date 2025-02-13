@@ -3,15 +3,11 @@ library qube_analytics_sdk;
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
-import 'dart:ui' as ui;
 
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
-import 'package:path_provider/path_provider.dart';
 import 'package:qube_analytics_sdk/services/LayoutVideoCaptureService.dart';
 import 'package:qube_analytics_sdk/services/behavior_data_service.dart';
 import 'package:qube_analytics_sdk/services/layout_analysis_service.dart';
@@ -119,11 +115,9 @@ class QubeAnalyticsSDK {
   late String deviceId;
   String? lastScreenId;
   late LayoutService layoutService;
-  ScrollController? _scrollController;
 
   final GlobalKey repaintBoundaryKey = GlobalKey();
-  Future<void> initialize(
-      {String? userId, ScrollController? scrollController}) async {
+  Future<void> initialize({String? userId}) async {
     sessionId = _generateUniqueId();
     deviceId = await _initializeDeviceId();
     final generatedUserId = userId ?? _generateUniqueId();
@@ -131,9 +125,6 @@ class QubeAnalyticsSDK {
     print("SDK Initialized: ${jsonEncode(userData)}");
     behaviorDataService = BehaviorDataService(this);
     layoutService = LayoutService(this);
-    _scrollController = scrollController;
-    layoutService.setScrollController(_scrollController);
-
     videoCaptureService = LayoutVideoCaptureService(this);
     FlutterError.onError = (FlutterErrorDetails details) {
       trackError(ErrorData(
@@ -387,137 +378,5 @@ class QubeNavigatorObserver extends NavigatorObserver {
   String _extractScreenName(Route<dynamic>? route) {
     if (route == null) return "Unknown";
     return route.settings.name ?? route.runtimeType.toString();
-  }
-}
-
-class ScreenCaptureService {
-  static ScreenCaptureService? _instance;
-  final GlobalKey screenshotKey = GlobalKey();
-
-  ScreenCaptureService._();
-
-  static ScreenCaptureService get instance {
-    _instance ??= ScreenCaptureService._();
-    return _instance!;
-  }
-
-  Future<String?> captureFullScreen(ScrollController scrollController) async {
-    try {
-      // Ensure we're not in a build phase
-      await Future.delayed(const Duration(milliseconds: 100));
-
-      // Wait for the next frame
-      await WidgetsBinding.instance.endOfFrame;
-
-      final RenderObject? renderObject =
-          screenshotKey.currentContext?.findRenderObject();
-      if (renderObject == null || !renderObject.attached) {
-        debugPrint('❌ RenderObject not found or not attached');
-        return null;
-      }
-
-      final RenderRepaintBoundary boundary =
-          renderObject as RenderRepaintBoundary;
-      final ScrollPosition position = scrollController.position;
-      final double totalHeight =
-          position.maxScrollExtent + position.viewportDimension;
-      final double viewportHeight = position.viewportDimension;
-      final int numberOfScreenshots = (totalHeight / viewportHeight).ceil();
-      final double initialPosition = position.pixels;
-
-      // Create recorder
-      final ui.PictureRecorder recorder = ui.PictureRecorder();
-      final Canvas canvas = Canvas(recorder);
-
-      try {
-        for (int i = 0; i < numberOfScreenshots; i++) {
-          final double targetPosition = i * viewportHeight;
-
-          // Schedule scroll
-          await scrollController.position.moveTo(
-            targetPosition,
-            duration: const Duration(milliseconds: 0),
-          );
-
-          // Wait for frame
-          await WidgetsBinding.instance.endOfFrame;
-
-          // Additional wait to ensure render completion
-          await Future.delayed(const Duration(milliseconds: 100));
-
-          final ui.Image image = await boundary.toImage(pixelRatio: 2.0);
-          final ByteData? byteData =
-              await image.toByteData(format: ui.ImageByteFormat.png);
-
-          if (byteData != null) {
-            final Uint8List bytes = byteData.buffer.asUint8List();
-            final ui.Codec codec = await ui.instantiateImageCodec(bytes);
-            final ui.FrameInfo frameInfo = await codec.getNextFrame();
-
-            canvas.drawImage(
-              frameInfo.image,
-              Offset(0, i * viewportHeight),
-              Paint(),
-            );
-
-            frameInfo.image.dispose();
-          }
-
-          image.dispose();
-        }
-
-        // Create final image
-        final ui.Picture picture = recorder.endRecording();
-        final ui.Image fullImage = await picture.toImage(
-          boundary.size.width.toInt(),
-          totalHeight.toInt(),
-        );
-
-        // Save image
-        final ByteData? fullByteData =
-            await fullImage.toByteData(format: ui.ImageByteFormat.png);
-        if (fullByteData == null) throw Exception('Failed to get byte data');
-
-        // Get storage directory
-        final Directory? directory = await getExternalStorageDirectory();
-        if (directory == null)
-          throw Exception('Failed to get storage directory');
-
-        // Create screenshots directory if it doesn't exist
-        final String screenshotsPath = '${directory.path}/screenshots';
-        final Directory screenshotsDir = Directory(screenshotsPath);
-        if (!await screenshotsDir.exists()) {
-          await screenshotsDir.create(recursive: true);
-        }
-
-        // Save file
-        final String fileName =
-            'screenshot_${DateTime.now().millisecondsSinceEpoch}.png';
-        final String filePath = '$screenshotsPath/$fileName';
-        final File file = File(filePath);
-        await file.writeAsBytes(fullByteData.buffer.asUint8List());
-
-        fullImage.dispose();
-
-        // Reset scroll position
-        await scrollController.position.moveTo(
-          initialPosition,
-          duration: const Duration(milliseconds: 0),
-        );
-
-        debugPrint('✅ Screenshot saved: $filePath');
-        return filePath;
-      } finally {
-        // Ensure we reset scroll position even if there's an error
-        await scrollController.position.moveTo(
-          initialPosition,
-          duration: const Duration(milliseconds: 0),
-        );
-      }
-    } catch (e, stackTrace) {
-      debugPrint('❌ Error capturing screenshot: $e');
-      debugPrint(stackTrace.toString());
-      return null;
-    }
   }
 }
