@@ -3,11 +3,15 @@ library qube_analytics_sdk;
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
+import 'dart:ui' as ui;
 
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
+import 'package:path_provider/path_provider.dart';
 import 'package:qube_analytics_sdk/services/LayoutVideoCaptureService.dart';
 import 'package:qube_analytics_sdk/services/behavior_data_service.dart';
 import 'package:qube_analytics_sdk/services/layout_analysis_service.dart';
@@ -383,5 +387,130 @@ class QubeNavigatorObserver extends NavigatorObserver {
   String _extractScreenName(Route<dynamic>? route) {
     if (route == null) return "Unknown";
     return route.settings.name ?? route.runtimeType.toString();
+  }
+}
+
+class ScreenCaptureService {
+  static ScreenCaptureService? _instance;
+  final GlobalKey screenshotKey = GlobalKey();
+
+  // Private constructor
+  ScreenCaptureService._();
+
+  // Singleton instance
+  static ScreenCaptureService get instance {
+    _instance ??= ScreenCaptureService._();
+    return _instance!;
+  }
+
+  Future<String?> captureFullScreen(
+      BuildContext context, ScrollController scrollController) async {
+    try {
+      // 1. Get the RenderObject
+      final RenderObject? renderObject =
+          screenshotKey.currentContext?.findRenderObject();
+      if (renderObject == null) {
+        debugPrint('❌ RenderObject not found');
+        return null;
+      }
+
+      // 2. Get scroll metrics
+      final ScrollPosition position = scrollController.position;
+      final double totalHeight =
+          position.maxScrollExtent + position.viewportDimension;
+      final double viewportHeight = position.viewportDimension;
+
+      // 3. Create a recorder for the full content
+      final ui.PictureRecorder recorder = ui.PictureRecorder();
+      final Canvas canvas = Canvas(recorder);
+
+      // 4. Calculate number of screenshots needed
+      final int numberOfScreenshots = (totalHeight / viewportHeight).ceil();
+
+      // 5. Store initial scroll position
+      final double initialScrollPosition = position.pixels;
+
+      // 6. Capture each section
+      for (int i = 0; i < numberOfScreenshots; i++) {
+        // Calculate target scroll position
+        final double targetScroll = i * viewportHeight;
+
+        // Scroll to position
+        await scrollController.animateTo(
+          targetScroll,
+          duration: const Duration(milliseconds: 100),
+          curve: Curves.linear,
+        );
+
+        // Wait for rendering
+        await Future.delayed(const Duration(milliseconds: 100));
+
+        // Capture current viewport
+        final RenderRepaintBoundary boundary =
+            renderObject as RenderRepaintBoundary;
+        final ui.Image image = await boundary.toImage(pixelRatio: 3.0);
+        final ByteData? byteData =
+            await image.toByteData(format: ui.ImageByteFormat.png);
+
+        if (byteData != null) {
+          // Draw the section at the correct position
+          final Uint8List bytes = byteData.buffer.asUint8List();
+          final ui.Codec codec = await ui.instantiateImageCodec(bytes);
+          final ui.FrameInfo frameInfo = await codec.getNextFrame();
+          canvas.drawImage(
+            frameInfo.image,
+            Offset(0, i * viewportHeight),
+            Paint(),
+          );
+        }
+
+        // Clean up
+        image.dispose();
+      }
+
+      // 7. Reset scroll position
+      await scrollController.animateTo(
+        initialScrollPosition,
+        duration: const Duration(milliseconds: 100),
+        curve: Curves.linear,
+      );
+
+      // 8. Create final image
+      final ui.Picture picture = recorder.endRecording();
+      final ui.Image fullImage = await picture.toImage(
+        renderObject.paintBounds.width.toInt(),
+        totalHeight.toInt(),
+      );
+
+      // 9. Convert to bytes and save
+      final ByteData? fullByteData =
+          await fullImage.toByteData(format: ui.ImageByteFormat.png);
+      if (fullByteData == null) {
+        debugPrint('❌ Failed to get byte data');
+        return null;
+      }
+
+      // 10. Save to file
+      final String fileName =
+          'screenshot_${DateTime.now().millisecondsSinceEpoch}.png';
+      final Directory? directory = await getExternalStorageDirectory();
+      if (directory == null) {
+        debugPrint('❌ Failed to get storage directory');
+        return null;
+      }
+
+      final String filePath = '${directory.path}/$fileName';
+      final File file = File(filePath);
+      await file.writeAsBytes(fullByteData.buffer.asUint8List());
+
+      // Clean up
+      fullImage.dispose();
+
+      debugPrint('✅ Screenshot saved: $filePath');
+      return filePath;
+    } catch (e) {
+      debugPrint('❌ Error capturing screenshot: $e');
+      return null;
+    }
   }
 }
